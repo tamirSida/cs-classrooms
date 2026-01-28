@@ -184,6 +184,13 @@ export class BookingService {
     return bookingRepository.findByClassroomAndDateRange(classroomId, startDate, endDate);
   }
 
+  async getAllBookingsForDateRange(
+    startDate: string,
+    endDate: string
+  ): Promise<IBooking[]> {
+    return bookingRepository.findByDateRange(startDate, endDate);
+  }
+
   async getBookingsForUser(userId: string): Promise<IBooking[]> {
     return bookingRepository.findByUser(userId);
   }

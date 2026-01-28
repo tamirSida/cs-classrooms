@@ -12,7 +12,7 @@ import {
   parseISO,
 } from "date-fns";
 import { cn } from "@/lib/utils";
-import { IBooking, BookingStatus, TimeSlotFactory } from "@/lib/models";
+import { IBooking, IClassroom, BookingStatus, TimeSlotFactory } from "@/lib/models";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface TimeGridProps {
@@ -22,6 +22,7 @@ interface TimeGridProps {
   operatingHours: { start: string; end: string };
   onSlotClick: (date: Date, startTime: string, endTime: string) => void;
   onBookingClick: (booking: IBooking) => void;
+  classrooms?: IClassroom[]; // When provided, shows all classrooms view
 }
 
 export function TimeGrid({
@@ -31,7 +32,9 @@ export function TimeGrid({
   operatingHours,
   onSlotClick,
   onBookingClick,
+  classrooms,
 }: TimeGridProps) {
+  const isAllClassroomsView = !!classrooms;
   const { user } = useAuth();
   const gridRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -85,10 +88,16 @@ export function TimeGrid({
   };
 
   const handleSlotMouseDown = (date: Date, time: string) => {
+    if (isAllClassroomsView) return; // Can't create bookings in all classrooms view
     if (isSlotInPast(date, time) || isSlotBooked(date, time)) return;
     setIsDragging(true);
     setDragStart({ date, time });
     setDragEnd(time);
+  };
+
+  const getClassroomName = (classroomId: string) => {
+    if (!classrooms) return null;
+    return classrooms.find(c => c.id === classroomId)?.name;
   };
 
   const handleSlotMouseEnter = (time: string) => {
@@ -211,15 +220,15 @@ export function TimeGrid({
                   const isPast = isSlotInPast(day, time);
                   const isBooked = isSlotBooked(day, time);
                   const isInDragRange = isSlotInDragRange(day, time);
+                  const canInteract = !isAllClassroomsView && !isPast && !isBooked;
 
                   return (
                     <div
                       key={time}
                       className={cn(
-                        "h-12 border-b cursor-pointer transition-colors",
-                        isPast && "bg-muted/50 cursor-not-allowed",
-                        isBooked && "cursor-not-allowed",
-                        !isPast && !isBooked && "hover:bg-primary/10",
+                        "h-12 border-b transition-colors",
+                        isPast && "bg-muted/50",
+                        canInteract ? "cursor-pointer hover:bg-primary/10" : "cursor-default",
                         isInDragRange && "bg-primary/20"
                       )}
                       onMouseDown={() => handleSlotMouseDown(day, time)}
@@ -232,6 +241,7 @@ export function TimeGrid({
                 {dayBookings.map((booking) => {
                   const style = getBookingStyle(booking);
                   const isOwn = booking.userId === user?.id;
+                  const classroomName = getClassroomName(booking.classroomId);
 
                   return (
                     <div
@@ -252,6 +262,9 @@ export function TimeGrid({
                         onBookingClick(booking);
                       }}
                     >
+                      {classroomName && (
+                        <div className="font-semibold truncate text-[10px] opacity-80">{classroomName}</div>
+                      )}
                       <div className="font-medium truncate">{booking.userName}</div>
                       <div className="truncate">
                         {booking.startTime} - {booking.endTime}

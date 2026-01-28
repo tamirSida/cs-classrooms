@@ -33,6 +33,24 @@ export function useBookings() {
     []
   );
 
+  const fetchAllBookings = useCallback(
+    async (startDate: string, endDate: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await bookingService.getAllBookingsForDateRange(startDate, endDate);
+        setBookings(data);
+        return data;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to fetch bookings");
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
   const fetchUserBookings = useCallback(async () => {
     if (!user) return [];
 
@@ -144,6 +162,7 @@ export function useBookings() {
     loading,
     error,
     fetchBookingsForClassroom,
+    fetchAllBookings,
     fetchUserBookings,
     createBooking,
     modifyBooking,

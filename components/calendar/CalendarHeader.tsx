@@ -83,11 +83,12 @@ export function CalendarHeader({
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <Select value={selectedClassroomId || ""} onValueChange={onClassroomChange}>
+        <Select value={selectedClassroomId || "all"} onValueChange={onClassroomChange}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Select classroom" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="all">All Classrooms</SelectItem>
             {classrooms.map((classroom) => (
               <SelectItem key={classroom.id} value={classroom.id}>
                 {classroom.name}

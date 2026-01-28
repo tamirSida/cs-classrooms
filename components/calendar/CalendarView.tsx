@@ -13,12 +13,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function CalendarView() {
   const { user } = useAuth();
-  const { bookings, loading: bookingsLoading, fetchBookingsForClassroom, createBooking, modifyBooking, cancelBooking } = useBookings();
+  const { bookings, loading: bookingsLoading, fetchBookingsForClassroom, fetchAllBookings, createBooking, modifyBooking, cancelBooking } = useBookings();
   const { classrooms, loading: classroomsLoading, fetchBookableClassrooms } = useClassrooms();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<"day" | "week">("week");
-  const [selectedClassroomId, setSelectedClassroomId] = useState<string | null>(null);
+  const [selectedClassroomId, setSelectedClassroomId] = useState<string>("all");
   const [settings, setSettings] = useState<ISettings | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -55,17 +55,8 @@ export function CalendarView() {
     fetchBookableClassrooms();
   }, [fetchBookableClassrooms]);
 
-  // Set initial classroom
-  useEffect(() => {
-    if (classrooms.length > 0 && !selectedClassroomId) {
-      setSelectedClassroomId(classrooms[0].id);
-    }
-  }, [classrooms, selectedClassroomId]);
-
   // Load bookings when classroom or date changes
   useEffect(() => {
-    if (!selectedClassroomId) return;
-
     const start = view === "day"
       ? format(currentDate, "yyyy-MM-dd")
       : format(startOfWeek(currentDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
@@ -74,18 +65,25 @@ export function CalendarView() {
       ? format(currentDate, "yyyy-MM-dd")
       : format(endOfWeek(currentDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
 
-    fetchBookingsForClassroom(selectedClassroomId, start, end);
-  }, [selectedClassroomId, currentDate, view, fetchBookingsForClassroom]);
+    if (selectedClassroomId === "all") {
+      fetchAllBookings(start, end);
+    } else {
+      fetchBookingsForClassroom(selectedClassroomId, start, end);
+    }
+  }, [selectedClassroomId, currentDate, view, fetchBookingsForClassroom, fetchAllBookings]);
 
   const handleSlotClick = useCallback(
     (date: Date, startTime: string, endTime: string) => {
+      // Don't allow creating bookings when viewing all classrooms
+      if (selectedClassroomId === "all") return;
+
       setSelectedBooking(null);
       setSelectedDate(date);
       setSelectedStartTime(startTime);
       setSelectedEndTime(endTime);
       setModalOpen(true);
     },
-    []
+    [selectedClassroomId]
   );
 
   const handleBookingClick = useCallback((booking: IBooking) => {
@@ -101,8 +99,8 @@ export function CalendarView() {
     startTime: string;
     endTime: string;
   }) => {
-    if (!selectedClassroomId || !user) {
-      return { success: false, error: "Missing data" };
+    if (!selectedClassroomId || selectedClassroomId === "all" || !user) {
+      return { success: false, error: "Please select a classroom to create a booking" };
     }
 
     if (selectedBooking) {
@@ -125,7 +123,9 @@ export function CalendarView() {
     return cancelBooking(selectedBooking.id);
   };
 
-  const selectedClassroom = classrooms.find((c) => c.id === selectedClassroomId);
+  const selectedClassroom = selectedClassroomId === "all"
+    ? undefined
+    : classrooms.find((c) => c.id === selectedClassroomId);
 
   if (classroomsLoading || !settings) {
     return (
@@ -162,7 +162,7 @@ export function CalendarView() {
         onClassroomChange={setSelectedClassroomId}
       />
 
-      <div className="flex-1 mt-4 overflow-hidden">
+      <div className="flex-1 mt-4 overflow-auto">
         <TimeGrid
           currentDate={currentDate}
           view={view}
@@ -170,6 +170,7 @@ export function CalendarView() {
           operatingHours={settings.operatingHours}
           onSlotClick={handleSlotClick}
           onBookingClick={handleBookingClick}
+          classrooms={selectedClassroomId === "all" ? classrooms : undefined}
         />
       </div>
 
@@ -177,7 +178,7 @@ export function CalendarView() {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         booking={selectedBooking}
-        classroom={selectedClassroom}
+        classroom={selectedBooking ? classrooms.find(c => c.id === selectedBooking.classroomId) : selectedClassroom}
         selectedDate={selectedDate || undefined}
         selectedStartTime={selectedStartTime}
         selectedEndTime={selectedEndTime}

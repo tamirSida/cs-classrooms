@@ -51,6 +51,13 @@ export class BookingRepository extends BaseRepository<IBooking> {
     });
   }
 
+  async findByDateRange(startDate: string, endDate: string): Promise<IBooking[]> {
+    const all = await this.findAll();
+    return all
+      .filter((b) => b.date >= startDate && b.date <= endDate)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  }
+
   async findByUser(userId: string): Promise<IBooking[]> {
     return this.findWithQuery({
       filters: [{ field: "userId", operator: "==", value: userId }],

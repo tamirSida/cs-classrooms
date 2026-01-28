@@ -106,9 +106,11 @@ export abstract class BaseRepository<T extends { id: string }> implements IRepos
       results.sort((a, b) => {
         const aVal = (a as Record<string, unknown>)[field];
         const bVal = (b as Record<string, unknown>)[field];
-        if (aVal < bVal) return direction === "asc" ? -1 : 1;
-        if (aVal > bVal) return direction === "asc" ? 1 : -1;
-        return 0;
+        // Convert to string for comparison (handles dates, times, strings)
+        const aStr = String(aVal ?? "");
+        const bStr = String(bVal ?? "");
+        const comparison = aStr.localeCompare(bStr);
+        return direction === "asc" ? comparison : -comparison;
       });
     }
 
