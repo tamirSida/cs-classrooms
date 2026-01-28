@@ -276,7 +276,7 @@ export function TimeGrid({
 
           {/* Time grid with classroom columns */}
           <div
-            className="relative grid"
+            className="relative grid pt-2"
             style={{
               gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
             }}
@@ -289,7 +289,7 @@ export function TimeGrid({
                   className="h-12 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
                 >
                   {index % 4 === 0 && (
-                    <span className="mt-[-6px]">{time}</span>
+                    <span className="-mt-1">{time}</span>
                   )}
                 </div>
               ))}
@@ -418,7 +418,7 @@ export function TimeGrid({
 
         {/* Time grid */}
         <div
-          className="relative grid"
+          className="relative grid pt-2"
           style={{
             gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
           }}
@@ -431,7 +431,7 @@ export function TimeGrid({
                 className="h-12 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
               >
                 {index % 4 === 0 && (
-                  <span className="mt-[-6px]">{time}</span>
+                  <span className="-mt-1">{time}</span>
                 )}
               </div>
             ))}

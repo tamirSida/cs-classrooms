@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Calendar,
+  CalendarDays,
   Building2,
   Users,
   Settings,
@@ -30,6 +31,11 @@ const navItems: NavItem[] = [
     label: "Calendar",
     href: "/calendar",
     icon: Calendar,
+  },
+  {
+    label: "My Bookings",
+    href: "/my-bookings",
+    icon: CalendarDays,
   },
   {
     label: "Classrooms",
