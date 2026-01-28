@@ -157,6 +157,83 @@ export function useBookings() {
     [user]
   );
 
+  const fetchPendingBookings = useCallback(async (classroomId?: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await bookingService.getPendingBookings(classroomId);
+      setBookings(data);
+      return data;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch pending bookings");
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const approveBooking = useCallback(
+    async (bookingId: string) => {
+      if (!user) {
+        return { success: false, error: "Not authenticated" };
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await bookingService.approveBooking(bookingId, user.id);
+        if (result.error) {
+          setError(result.error);
+          return { success: false, error: result.error };
+        }
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === bookingId ? { ...b, status: BookingStatus.CONFIRMED } : b
+          )
+        );
+        return { success: true };
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "Failed to approve booking";
+        setError(errorMsg);
+        return { success: false, error: errorMsg };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
+
+  const rejectBooking = useCallback(
+    async (bookingId: string) => {
+      if (!user) {
+        return { success: false, error: "Not authenticated" };
+      }
+
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await bookingService.rejectBooking(bookingId, user.id);
+        if (result.error) {
+          setError(result.error);
+          return { success: false, error: result.error };
+        }
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === bookingId ? { ...b, status: BookingStatus.CANCELLED } : b
+          )
+        );
+        return { success: true };
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "Failed to reject booking";
+        setError(errorMsg);
+        return { success: false, error: errorMsg };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
+
   return {
     bookings,
     loading,
@@ -164,9 +241,12 @@ export function useBookings() {
     fetchBookingsForClassroom,
     fetchAllBookings,
     fetchUserBookings,
+    fetchPendingBookings,
     createBooking,
     modifyBooking,
     cancelBooking,
+    approveBooking,
+    rejectBooking,
     clearError: () => setError(null),
   };
 }

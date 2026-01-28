@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { settingsService } from "@/lib/services";
 import { ISettings } from "@/lib/models";
@@ -22,7 +30,9 @@ export default function SettingsPage() {
 
   const [operatingStart, setOperatingStart] = useState("08:00");
   const [operatingEnd, setOperatingEnd] = useState("18:00");
-  const [defaultMaxTime, setDefaultMaxTime] = useState(60);
+  const [maxTimeMode, setMaxTimeMode] = useState<"unlimited" | "custom">("custom");
+  const [customMaxTime, setCustomMaxTime] = useState(60);
+  const [timeSlotDuration, setTimeSlotDuration] = useState(15);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -33,7 +43,16 @@ export default function SettingsPage() {
       setSettings(data);
       setOperatingStart(data.operatingHours.start);
       setOperatingEnd(data.operatingHours.end);
-      setDefaultMaxTime(data.defaultMaxTimePerDay);
+      setTimeSlotDuration(data.timeSlotDuration);
+
+      if (data.defaultMaxTimePerDay === -1) {
+        setMaxTimeMode("unlimited");
+        setCustomMaxTime(60);
+      } else {
+        setMaxTimeMode("custom");
+        setCustomMaxTime(data.defaultMaxTimePerDay);
+      }
+
       setLoading(false);
     };
 
@@ -47,6 +66,8 @@ export default function SettingsPage() {
     setError(null);
     setSuccess(false);
 
+    const maxTime = maxTimeMode === "unlimited" ? -1 : customMaxTime;
+
     try {
       await settingsService.updateSettings(
         {
@@ -54,7 +75,8 @@ export default function SettingsPage() {
             start: operatingStart,
             end: operatingEnd,
           },
-          defaultMaxTimePerDay: defaultMaxTime,
+          defaultMaxTimePerDay: maxTime,
+          timeSlotDuration,
         },
         user.id
       );
@@ -124,24 +146,40 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>Booking Limits</CardTitle>
             <CardDescription>
-              Default time limits for student bookings
+              Default daily time limit for student bookings
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="maxTime">Default Max Time Per Day (minutes)</Label>
-              <Input
-                id="maxTime"
-                type="number"
-                min="0"
-                value={defaultMaxTime}
-                onChange={(e) => setDefaultMaxTime(parseInt(e.target.value) || 0)}
-              />
-              <p className="text-xs text-muted-foreground">
-                This is the default limit per student per day. Individual classrooms
-                can override this setting. Set to 0 for unlimited.
-              </p>
-            </div>
+            <RadioGroup
+              value={maxTimeMode}
+              onValueChange={(v) => setMaxTimeMode(v as "unlimited" | "custom")}
+            >
+              <RadioGroupItem value="unlimited" id="maxTime-unlimited">
+                <span className="text-sm font-medium">Unlimited</span>
+                <span className="text-xs text-muted-foreground ml-2">No daily limit</span>
+              </RadioGroupItem>
+              <RadioGroupItem value="custom" id="maxTime-custom">
+                <span className="text-sm font-medium">Custom limit</span>
+              </RadioGroupItem>
+            </RadioGroup>
+
+            {maxTimeMode === "custom" && (
+              <div className="ml-7 space-y-2">
+                <Label htmlFor="customMaxTime">Minutes per day</Label>
+                <Input
+                  id="customMaxTime"
+                  type="number"
+                  min="1"
+                  className="w-32"
+                  value={customMaxTime}
+                  onChange={(e) => setCustomMaxTime(parseInt(e.target.value) || 60)}
+                />
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              Individual classrooms can override this with their own limits.
+            </p>
           </CardContent>
         </Card>
 
@@ -154,10 +192,24 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <Label>Time Slot Duration</Label>
-              <Input value="15 minutes" disabled />
+              <Label htmlFor="slotDuration">Time Slot Duration</Label>
+              <Select
+                value={String(timeSlotDuration)}
+                onValueChange={(v) => setTimeSlotDuration(parseInt(v))}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5 minutes</SelectItem>
+                  <SelectItem value="10">10 minutes</SelectItem>
+                  <SelectItem value="15">15 minutes</SelectItem>
+                  <SelectItem value="30">30 minutes</SelectItem>
+                  <SelectItem value="60">1 hour</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">
-                Time slots are fixed at 15-minute intervals
+                This determines the minimum booking duration and grid intervals.
               </p>
             </div>
           </CardContent>

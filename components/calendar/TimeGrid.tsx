@@ -12,7 +12,7 @@ import {
   parseISO,
 } from "date-fns";
 import { cn } from "@/lib/utils";
-import { IBooking, IClassroom, BookingStatus, TimeSlotFactory } from "@/lib/models";
+import { IBooking, IClassroom, BookingStatus, TimeSlotFactory, UserRole } from "@/lib/models";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface TimeGridProps {
@@ -53,11 +53,18 @@ export function TimeGrid({
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   }, [currentDate, view]);
 
+  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+
   const getBookingsForDay = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
-    return bookings.filter(
-      (b) => b.date === dateStr && b.status !== BookingStatus.CANCELLED
-    );
+    return bookings.filter((b) => {
+      if (b.date !== dateStr || b.status === BookingStatus.CANCELLED) return false;
+      // Hide pending bookings from non-admins (unless it's their own booking)
+      if (b.status === BookingStatus.PENDING && !isAdmin && b.userId !== user?.id) {
+        return false;
+      }
+      return true;
+    });
   };
 
   const getBookingStyle = (booking: IBooking) => {
@@ -80,6 +87,10 @@ export function TimeGrid({
     const dateStr = format(date, "yyyy-MM-dd");
     return bookings.some((b) => {
       if (b.date !== dateStr || b.status === BookingStatus.CANCELLED) return false;
+      // Pending bookings from others don't block slots for non-admins
+      if (b.status === BookingStatus.PENDING && !isAdmin && b.userId !== user?.id) {
+        return false;
+      }
       const bookingStart = parse(b.startTime, "HH:mm", new Date());
       const bookingEnd = parse(b.endTime, "HH:mm", new Date());
       const slotTime = parse(time, "HH:mm", new Date());

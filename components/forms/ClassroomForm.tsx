@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -29,7 +30,8 @@ const classroomSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
   permissions: z.enum(["admin_only", "student"]),
-  maxTimePerDay: z.number().min(0),
+  maxTimeMode: z.enum(["default", "custom", "unlimited"]),
+  customMaxTime: z.number().min(1).optional(),
   requiresApproval: z.boolean(),
   isActive: z.boolean(),
 });
@@ -65,7 +67,8 @@ export function ClassroomForm({
       name: "",
       description: "",
       permissions: "student",
-      maxTimePerDay: 0,
+      maxTimeMode: "default",
+      customMaxTime: 60,
       requiresApproval: false,
       isActive: true,
     },
@@ -73,11 +76,23 @@ export function ClassroomForm({
 
   useEffect(() => {
     if (classroom) {
+      const maxTime = classroom.config.maxTimePerDay;
+      let mode: "default" | "custom" | "unlimited" = "default";
+      let customValue = 60;
+
+      if (maxTime === -1) {
+        mode = "unlimited";
+      } else if (maxTime > 0) {
+        mode = "custom";
+        customValue = maxTime;
+      }
+
       reset({
         name: classroom.name,
         description: classroom.description || "",
         permissions: classroom.config.permissions,
-        maxTimePerDay: classroom.config.maxTimePerDay,
+        maxTimeMode: mode,
+        customMaxTime: customValue,
         requiresApproval: classroom.config.requiresApproval,
         isActive: classroom.config.isActive,
       });
@@ -86,7 +101,8 @@ export function ClassroomForm({
         name: "",
         description: "",
         permissions: "student",
-        maxTimePerDay: 0,
+        maxTimeMode: "default",
+        customMaxTime: 60,
         requiresApproval: false,
         isActive: true,
       });
@@ -98,12 +114,19 @@ export function ClassroomForm({
     setLoading(true);
     setError(null);
 
+    let maxTimePerDay = 0; // default
+    if (data.maxTimeMode === "unlimited") {
+      maxTimePerDay = -1;
+    } else if (data.maxTimeMode === "custom") {
+      maxTimePerDay = data.customMaxTime || 60;
+    }
+
     const result = await onSave({
       name: data.name,
       description: data.description,
       config: {
         permissions: data.permissions as ClassroomPermission,
-        maxTimePerDay: data.maxTimePerDay,
+        maxTimePerDay,
         requiresApproval: data.requiresApproval,
         isActive: data.isActive,
       },
@@ -119,6 +142,7 @@ export function ClassroomForm({
   };
 
   const permissions = watch("permissions");
+  const maxTimeMode = watch("maxTimeMode");
   const requiresApproval = watch("requiresApproval");
   const isActive = watch("isActive");
 
@@ -176,17 +200,35 @@ export function ClassroomForm({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="maxTimePerDay">Max Time Per Day (minutes)</Label>
-            <Input
-              id="maxTimePerDay"
-              type="number"
-              {...register("maxTimePerDay", { valueAsNumber: true })}
-              placeholder="0 = use global setting"
-            />
-            <p className="text-xs text-muted-foreground">
-              Set to 0 to use the global default setting
-            </p>
+          <div className="space-y-3">
+            <Label>Daily Time Limit</Label>
+            <RadioGroup
+              value={maxTimeMode}
+              onValueChange={(v) => setValue("maxTimeMode", v as "default" | "custom" | "unlimited")}
+            >
+              <RadioGroupItem value="default" id="time-default">
+                <span className="text-sm">Use global default</span>
+              </RadioGroupItem>
+              <RadioGroupItem value="custom" id="time-custom">
+                <span className="text-sm">Custom limit</span>
+              </RadioGroupItem>
+              <RadioGroupItem value="unlimited" id="time-unlimited">
+                <span className="text-sm">Unlimited</span>
+              </RadioGroupItem>
+            </RadioGroup>
+
+            {maxTimeMode === "custom" && (
+              <div className="ml-7">
+                <Input
+                  type="number"
+                  min="1"
+                  className="w-32"
+                  {...register("customMaxTime", { valueAsNumber: true })}
+                  placeholder="Minutes"
+                />
+                <p className="text-xs text-muted-foreground mt-1">minutes per day</p>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between">

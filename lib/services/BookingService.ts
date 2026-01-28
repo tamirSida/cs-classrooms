@@ -154,7 +154,7 @@ export class BookingService {
     return { success: true };
   }
 
-  async approveBooking(bookingId: string): Promise<{ success: boolean; error?: string }> {
+  async approveBooking(bookingId: string, userId: string): Promise<{ success: boolean; error?: string }> {
     const booking = await bookingRepository.findById(bookingId);
     if (!booking) {
       return { success: false, error: "Booking not found" };
@@ -172,6 +172,21 @@ export class BookingService {
     if (classroom && updatedBooking) {
       await emailService.sendBookingConfirmation(updatedBooking, classroom.name);
     }
+
+    return { success: true };
+  }
+
+  async rejectBooking(bookingId: string, userId: string): Promise<{ success: boolean; error?: string }> {
+    const booking = await bookingRepository.findById(bookingId);
+    if (!booking) {
+      return { success: false, error: "Booking not found" };
+    }
+
+    if (booking.status !== BookingStatus.PENDING) {
+      return { success: false, error: "Booking is not pending approval" };
+    }
+
+    await bookingRepository.cancelBooking(bookingId, userId);
 
     return { success: true };
   }

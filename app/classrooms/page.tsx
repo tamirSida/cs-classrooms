@@ -135,9 +135,11 @@ export default function ClassroomsPage() {
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Clock className="h-4 w-4" />
                       <span>
-                        {classroom.config.maxTimePerDay > 0
+                        {classroom.config.maxTimePerDay === -1
+                          ? "Unlimited"
+                          : classroom.config.maxTimePerDay > 0
                           ? `${classroom.config.maxTimePerDay} min/day limit`
-                          : "Uses global time limit"}
+                          : "Uses global limit"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">

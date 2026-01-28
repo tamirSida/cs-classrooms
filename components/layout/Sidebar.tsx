@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   X,
+  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,12 @@ const navItems: NavItem[] = [
     label: "Classrooms",
     href: "/classrooms",
     icon: Building2,
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
+  },
+  {
+    label: "Approvals",
+    href: "/approvals",
+    icon: ClipboardCheck,
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
   },
   {

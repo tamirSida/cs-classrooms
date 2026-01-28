@@ -8,8 +8,8 @@ export interface IOperatingHours {
 export interface ISettings {
   id: string;
   operatingHours: IOperatingHours;
-  defaultMaxTimePerDay: number; // Minutes
-  timeSlotDuration: number; // Minutes (fixed at 15)
+  defaultMaxTimePerDay: number; // Minutes, -1 = unlimited
+  timeSlotDuration: number; // Minutes (5, 10, 15, 30, 60)
   updatedAt: Timestamp;
   updatedBy: string;
 }
@@ -17,6 +17,7 @@ export interface ISettings {
 export interface ISettingsUpdate {
   operatingHours?: IOperatingHours;
   defaultMaxTimePerDay?: number;
+  timeSlotDuration?: number;
 }
 
 export class Settings implements ISettings {

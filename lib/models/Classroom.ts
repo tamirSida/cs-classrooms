@@ -7,7 +7,7 @@ export enum ClassroomPermission {
 
 export interface IClassroomConfig {
   permissions: ClassroomPermission;
-  maxTimePerDay: number; // Minutes, 0 = use global setting
+  maxTimePerDay: number; // Minutes: 0 = use global default, -1 = unlimited, >0 = custom value
   requiresApproval: boolean;
   isActive: boolean;
 }
