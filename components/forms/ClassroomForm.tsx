@@ -24,11 +24,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IClassroom, IClassroomCreate, ClassroomPermission } from "@/lib/models";
+import { IClassroom, IClassroomCreate, ClassroomPermission, CLASSROOM_COLOR_OPTIONS, ClassroomColorId } from "@/lib/models";
+import { cn } from "@/lib/utils";
+
+const colorIds = CLASSROOM_COLOR_OPTIONS.map(c => c.id) as [string, ...string[]];
 
 const classroomSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
+  color: z.enum(colorIds).optional(),
   permissions: z.enum(["admin_only", "student"]),
   maxTimeMode: z.enum(["default", "custom", "unlimited"]),
   customMaxTime: z.number().min(1).optional(),
@@ -42,13 +46,28 @@ interface ClassroomFormProps {
   isOpen: boolean;
   onClose: () => void;
   classroom?: IClassroom | null;
+  existingClassrooms?: IClassroom[]; // To know which colors are already in use
   onSave: (data: IClassroomCreate) => Promise<{ success: boolean; error?: string }>;
+}
+
+// Get a random available color that's not already used
+function getRandomAvailableColor(usedColors: (ClassroomColorId | undefined)[]): ClassroomColorId {
+  const usedSet = new Set(usedColors.filter(Boolean));
+  const availableColors = CLASSROOM_COLOR_OPTIONS.filter(c => !usedSet.has(c.id));
+
+  if (availableColors.length === 0) {
+    // All colors used, just pick a random one
+    return CLASSROOM_COLOR_OPTIONS[Math.floor(Math.random() * CLASSROOM_COLOR_OPTIONS.length)].id;
+  }
+
+  return availableColors[Math.floor(Math.random() * availableColors.length)].id;
 }
 
 export function ClassroomForm({
   isOpen,
   onClose,
   classroom,
+  existingClassrooms = [],
   onSave,
 }: ClassroomFormProps) {
   const [loading, setLoading] = useState(false);
@@ -66,6 +85,7 @@ export function ClassroomForm({
     defaultValues: {
       name: "",
       description: "",
+      color: "blue",
       permissions: "student",
       maxTimeMode: "default",
       customMaxTime: 60,
@@ -90,6 +110,7 @@ export function ClassroomForm({
       reset({
         name: classroom.name,
         description: classroom.description || "",
+        color: classroom.color || "blue",
         permissions: classroom.config.permissions,
         maxTimeMode: mode,
         customMaxTime: customValue,
@@ -97,9 +118,14 @@ export function ClassroomForm({
         isActive: classroom.config.isActive,
       });
     } else {
+      // For new classroom, pick a random available color
+      const usedColors = existingClassrooms.map(c => c.color);
+      const randomColor = getRandomAvailableColor(usedColors);
+
       reset({
         name: "",
         description: "",
+        color: randomColor,
         permissions: "student",
         maxTimeMode: "default",
         customMaxTime: 60,
@@ -108,7 +134,7 @@ export function ClassroomForm({
       });
     }
     setError(null);
-  }, [classroom, reset, isOpen]);
+  }, [classroom, reset, isOpen, existingClassrooms]);
 
   const onSubmit = async (data: ClassroomFormData) => {
     setLoading(true);
@@ -124,6 +150,7 @@ export function ClassroomForm({
     const result = await onSave({
       name: data.name,
       description: data.description,
+      color: data.color as ClassroomColorId,
       config: {
         permissions: data.permissions as ClassroomPermission,
         maxTimePerDay,
@@ -145,6 +172,7 @@ export function ClassroomForm({
   const maxTimeMode = watch("maxTimeMode");
   const requiresApproval = watch("requiresApproval");
   const isActive = watch("isActive");
+  const selectedColor = watch("color");
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -180,6 +208,27 @@ export function ClassroomForm({
               {...register("description")}
               placeholder="Computer lab with 30 seats"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Color</Label>
+            <div className="flex flex-wrap gap-2">
+              {CLASSROOM_COLOR_OPTIONS.map((color) => (
+                <button
+                  key={color.id}
+                  type="button"
+                  onClick={() => setValue("color", color.id)}
+                  className={cn(
+                    "w-8 h-8 rounded-full transition-all",
+                    color.bg,
+                    selectedColor === color.id
+                      ? "ring-2 ring-offset-2 ring-foreground scale-110"
+                      : "hover:scale-105"
+                  )}
+                  title={color.label}
+                />
+              ))}
+            </div>
           </div>
 
           <div className="space-y-2">

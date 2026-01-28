@@ -47,6 +47,9 @@ export class ClassroomService {
     if (data.description !== undefined) {
       updateData.description = data.description;
     }
+    if (data.color !== undefined) {
+      updateData.color = data.color;
+    }
     if (data.assignedAdmins !== undefined) {
       updateData.assignedAdmins = data.assignedAdmins;
     }

@@ -74,6 +74,11 @@ export function CalendarView() {
     }
   }, [selectedClassroomId, currentDate, view, fetchBookingsForClassroom, fetchAllBookings]);
 
+  // Get selected classroom for single view
+  const selectedClassroom = selectedClassroomId !== "all"
+    ? classrooms.find((c) => c.id === selectedClassroomId)
+    : undefined;
+
   const handleSlotClick = useCallback(
     (date: Date, startTime: string, endTime: string) => {
       // Don't allow creating bookings when viewing all classrooms
@@ -135,10 +140,6 @@ export function CalendarView() {
     setModalOpen(true);
   };
 
-  const selectedClassroom = selectedClassroomId === "all"
-    ? undefined
-    : classrooms.find((c) => c.id === selectedClassroomId);
-
   if (classroomsLoading || !settings) {
     return (
       <div className="space-y-4">
@@ -177,6 +178,7 @@ export function CalendarView() {
 
       <div className="flex-1 mt-4 overflow-auto">
         <TimeGrid
+          key={selectedClassroomId}
           currentDate={currentDate}
           view={view}
           bookings={bookings}
@@ -184,6 +186,7 @@ export function CalendarView() {
           onSlotClick={handleSlotClick}
           onBookingClick={handleBookingClick}
           classrooms={selectedClassroomId === "all" ? classrooms : undefined}
+          selectedClassroom={selectedClassroom}
         />
       </div>
 

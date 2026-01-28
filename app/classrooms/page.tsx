@@ -192,6 +192,7 @@ export default function ClassroomsPage() {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         classroom={selectedClassroom}
+        existingClassrooms={classrooms}
         onSave={handleSave}
       />
     </DashboardLayout>

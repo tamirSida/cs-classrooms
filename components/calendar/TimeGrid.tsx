@@ -11,24 +11,12 @@ import {
   isBefore,
 } from "date-fns";
 import { cn } from "@/lib/utils";
-import { IBooking, IClassroom, BookingStatus, TimeSlotFactory, UserRole } from "@/lib/models";
+import { IBooking, IClassroom, BookingStatus, TimeSlotFactory, UserRole, getClassroomColor, CLASSROOM_COLOR_OPTIONS } from "@/lib/models";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Predefined colors for classrooms
-const CLASSROOM_COLORS = [
-  { bg: "bg-blue-500", text: "text-white", light: "bg-blue-100", border: "border-blue-500" },
-  { bg: "bg-emerald-500", text: "text-white", light: "bg-emerald-100", border: "border-emerald-500" },
-  { bg: "bg-purple-500", text: "text-white", light: "bg-purple-100", border: "border-purple-500" },
-  { bg: "bg-orange-500", text: "text-white", light: "bg-orange-100", border: "border-orange-500" },
-  { bg: "bg-pink-500", text: "text-white", light: "bg-pink-100", border: "border-pink-500" },
-  { bg: "bg-cyan-500", text: "text-white", light: "bg-cyan-100", border: "border-cyan-500" },
-  { bg: "bg-amber-500", text: "text-white", light: "bg-amber-100", border: "border-amber-500" },
-  { bg: "bg-indigo-500", text: "text-white", light: "bg-indigo-100", border: "border-indigo-500" },
-];
-
 // User's own booking color
-const USER_COLOR = { bg: "bg-primary", text: "text-primary-foreground", border: "border-primary" };
-const PENDING_COLOR = { bg: "bg-yellow-500", text: "text-yellow-950", border: "border-yellow-600" };
+const USER_COLOR = { bg: "bg-primary", text: "text-primary-foreground", border: "border-primary", light: "bg-primary/20" };
+const PENDING_COLOR = { bg: "bg-yellow-500", text: "text-yellow-950", border: "border-yellow-600", light: "bg-yellow-100" };
 
 interface TimeGridProps {
   currentDate: Date;
@@ -38,6 +26,7 @@ interface TimeGridProps {
   onSlotClick: (date: Date, startTime: string, endTime: string) => void;
   onBookingClick: (booking: IBooking) => void;
   classrooms?: IClassroom[];
+  selectedClassroom?: IClassroom;
 }
 
 export function TimeGrid({
@@ -48,6 +37,7 @@ export function TimeGrid({
   onSlotClick,
   onBookingClick,
   classrooms,
+  selectedClassroom,
 }: TimeGridProps) {
   const isAllClassroomsView = !!classrooms && classrooms.length > 0;
   const { user } = useAuth();
@@ -70,12 +60,13 @@ export function TimeGrid({
 
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
-  // Create a color map for classrooms
+  // Create a color map for classrooms using their configured color or fallback
   const classroomColorMap = useMemo(() => {
-    const map = new Map<string, typeof CLASSROOM_COLORS[0]>();
+    const map = new Map<string, (typeof CLASSROOM_COLOR_OPTIONS)[number]>();
     if (classrooms) {
       classrooms.forEach((classroom, index) => {
-        map.set(classroom.id, CLASSROOM_COLORS[index % CLASSROOM_COLORS.length]);
+        const color = getClassroomColor(classroom.color, index);
+        map.set(classroom.id, color);
       });
     }
     return map;
@@ -83,9 +74,12 @@ export function TimeGrid({
 
   const getBookingsForDayAndClassroom = (date: Date, classroomId?: string) => {
     const dateStr = format(date, "yyyy-MM-dd");
+    // In single classroom view, filter by selected classroom to avoid showing stale data
+    const filterClassroomId = classroomId || (selectedClassroom?.id);
+
     return bookings.filter((b) => {
       if (b.date !== dateStr || b.status === BookingStatus.CANCELLED) return false;
-      if (classroomId && b.classroomId !== classroomId) return false;
+      if (filterClassroomId && b.classroomId !== filterClassroomId) return false;
       if (b.status === BookingStatus.PENDING && !isAdmin && b.userId !== user?.id) {
         return false;
       }
@@ -111,9 +105,12 @@ export function TimeGrid({
 
   const isSlotBooked = (date: Date, time: string, classroomId?: string) => {
     const dateStr = format(date, "yyyy-MM-dd");
+    // In single classroom view, filter by selected classroom
+    const filterClassroomId = classroomId || (selectedClassroom?.id);
+
     return bookings.some((b) => {
       if (b.date !== dateStr || b.status === BookingStatus.CANCELLED) return false;
-      if (classroomId && b.classroomId !== classroomId) return false;
+      if (filterClassroomId && b.classroomId !== filterClassroomId) return false;
       if (b.status === BookingStatus.PENDING && !isAdmin && b.userId !== user?.id) {
         return false;
       }
@@ -187,7 +184,13 @@ export function TimeGrid({
     }
 
     // Use classroom color for other people's bookings
-    return classroomColorMap.get(booking.classroomId) || CLASSROOM_COLORS[0];
+    // In single view, use selected classroom's color; in all view, use the booking's classroom color
+    if (isAllClassroomsView) {
+      return classroomColorMap.get(booking.classroomId) || getClassroomColor(undefined, 0);
+    }
+
+    // Single classroom view - use the selected classroom's configured color
+    return getClassroomColor(selectedClassroom?.color, 0);
   };
 
   // Render the side-by-side classroom view for "all classrooms"
@@ -202,8 +205,8 @@ export function TimeGrid({
         >
           {/* Classroom color legend */}
           <div className="sticky top-0 z-30 bg-background border-b p-2 flex flex-wrap gap-3">
-            {classrooms.map((classroom, index) => {
-              const color = CLASSROOM_COLORS[index % CLASSROOM_COLORS.length];
+            {classrooms.map((classroom) => {
+              const color = classroomColorMap.get(classroom.id) || getClassroomColor(classroom.color, 0);
               return (
                 <div key={classroom.id} className="flex items-center gap-1.5">
                   <div className={cn("w-3 h-3 rounded", color.bg)} />
@@ -249,8 +252,8 @@ export function TimeGrid({
                   </div>
                   {/* Classroom sub-headers */}
                   <div className="grid" style={{ gridTemplateColumns: `repeat(${classrooms.length}, 1fr)` }}>
-                    {classrooms.map((classroom, idx) => {
-                      const color = CLASSROOM_COLORS[idx % CLASSROOM_COLORS.length];
+                    {classrooms.map((classroom) => {
+                      const color = classroomColorMap.get(classroom.id) || getClassroomColor(classroom.color, 0);
                       return (
                         <div
                           key={classroom.id}
@@ -303,7 +306,7 @@ export function TimeGrid({
               >
                 {classrooms.map((classroom, idx) => {
                   const dayBookings = getBookingsForDayAndClassroom(day, classroom.id);
-                  const color = CLASSROOM_COLORS[idx % CLASSROOM_COLORS.length];
+                  const color = classroomColorMap.get(classroom.id) || getClassroomColor(classroom.color, idx);
 
                   return (
                     <div key={classroom.id} className="relative border-r last:border-r-0">
