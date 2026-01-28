@@ -45,9 +45,11 @@ export class BookingService {
       return { booking: null as unknown as IBooking, error: validation.error };
     }
 
-    const status = classroom.config.requiresApproval
-      ? BookingStatus.PENDING
-      : BookingStatus.CONFIRMED;
+    // Auto-confirm for admins, otherwise check if approval is required
+    const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
+    const status = isAdmin || !classroom.config.requiresApproval
+      ? BookingStatus.CONFIRMED
+      : BookingStatus.PENDING;
 
     const booking = await bookingRepository.create({
       ...data,

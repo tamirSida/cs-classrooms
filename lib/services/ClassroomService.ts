@@ -95,11 +95,8 @@ export class ClassroomService {
       return this.getAllClassrooms();
     }
 
-    if (user.role === UserRole.ADMIN) {
-      return classroomRepository.findByAdmin(user.id);
-    }
-
-    return classroomRepository.findStudentBookableClassrooms();
+    // ADMIN and STUDENT both see all active classrooms
+    return this.getActiveClassrooms();
   }
 
   async getBookableClassroomsForUser(user: IUser): Promise<IClassroom[]> {
