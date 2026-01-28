@@ -1,7 +1,7 @@
 "use client";
 
 import { format, addDays, subDays, startOfWeek, addWeeks, subWeeks } from "date-fns";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,6 +20,7 @@ interface CalendarHeaderProps {
   onDateChange: (date: Date) => void;
   onViewChange: (view: "day" | "week") => void;
   onClassroomChange: (classroomId: string) => void;
+  onFindClick?: () => void;
 }
 
 export function CalendarHeader({
@@ -30,6 +31,7 @@ export function CalendarHeader({
   onDateChange,
   onViewChange,
   onClassroomChange,
+  onFindClick,
 }: CalendarHeaderProps) {
   const handlePrevious = () => {
     if (view === "day") {
@@ -83,6 +85,13 @@ export function CalendarHeader({
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
+        {onFindClick && (
+          <Button variant="outline" size="sm" onClick={onFindClick}>
+            <Search className="h-4 w-4 mr-2" />
+            Find Room
+          </Button>
+        )}
+
         <Select value={selectedClassroomId || "all"} onValueChange={onClassroomChange}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Select classroom" />

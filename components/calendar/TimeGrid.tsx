@@ -9,11 +9,26 @@ import {
   parse,
   isToday,
   isBefore,
-  parseISO,
 } from "date-fns";
 import { cn } from "@/lib/utils";
 import { IBooking, IClassroom, BookingStatus, TimeSlotFactory, UserRole } from "@/lib/models";
 import { useAuth } from "@/contexts/AuthContext";
+
+// Predefined colors for classrooms
+const CLASSROOM_COLORS = [
+  { bg: "bg-blue-500", text: "text-white", light: "bg-blue-100", border: "border-blue-500" },
+  { bg: "bg-emerald-500", text: "text-white", light: "bg-emerald-100", border: "border-emerald-500" },
+  { bg: "bg-purple-500", text: "text-white", light: "bg-purple-100", border: "border-purple-500" },
+  { bg: "bg-orange-500", text: "text-white", light: "bg-orange-100", border: "border-orange-500" },
+  { bg: "bg-pink-500", text: "text-white", light: "bg-pink-100", border: "border-pink-500" },
+  { bg: "bg-cyan-500", text: "text-white", light: "bg-cyan-100", border: "border-cyan-500" },
+  { bg: "bg-amber-500", text: "text-white", light: "bg-amber-100", border: "border-amber-500" },
+  { bg: "bg-indigo-500", text: "text-white", light: "bg-indigo-100", border: "border-indigo-500" },
+];
+
+// User's own booking color
+const USER_COLOR = { bg: "bg-primary", text: "text-primary-foreground", border: "border-primary" };
+const PENDING_COLOR = { bg: "bg-yellow-500", text: "text-yellow-950", border: "border-yellow-600" };
 
 interface TimeGridProps {
   currentDate: Date;
@@ -22,7 +37,7 @@ interface TimeGridProps {
   operatingHours: { start: string; end: string };
   onSlotClick: (date: Date, startTime: string, endTime: string) => void;
   onBookingClick: (booking: IBooking) => void;
-  classrooms?: IClassroom[]; // When provided, shows all classrooms view
+  classrooms?: IClassroom[];
 }
 
 export function TimeGrid({
@@ -34,11 +49,11 @@ export function TimeGrid({
   onBookingClick,
   classrooms,
 }: TimeGridProps) {
-  const isAllClassroomsView = !!classrooms;
+  const isAllClassroomsView = !!classrooms && classrooms.length > 0;
   const { user } = useAuth();
   const gridRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<{ date: Date; time: string } | null>(null);
+  const [dragStart, setDragStart] = useState<{ date: Date; time: string; classroomId?: string } | null>(null);
   const [dragEnd, setDragEnd] = useState<string | null>(null);
 
   const timeSlots = useMemo(() => {
@@ -55,11 +70,22 @@ export function TimeGrid({
 
   const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
-  const getBookingsForDay = (date: Date) => {
+  // Create a color map for classrooms
+  const classroomColorMap = useMemo(() => {
+    const map = new Map<string, typeof CLASSROOM_COLORS[0]>();
+    if (classrooms) {
+      classrooms.forEach((classroom, index) => {
+        map.set(classroom.id, CLASSROOM_COLORS[index % CLASSROOM_COLORS.length]);
+      });
+    }
+    return map;
+  }, [classrooms]);
+
+  const getBookingsForDayAndClassroom = (date: Date, classroomId?: string) => {
     const dateStr = format(date, "yyyy-MM-dd");
     return bookings.filter((b) => {
       if (b.date !== dateStr || b.status === BookingStatus.CANCELLED) return false;
-      // Hide pending bookings from non-admins (unless it's their own booking)
+      if (classroomId && b.classroomId !== classroomId) return false;
       if (b.status === BookingStatus.PENDING && !isAdmin && b.userId !== user?.id) {
         return false;
       }
@@ -83,11 +109,11 @@ export function TimeGrid({
     return isBefore(slotDateTime, new Date());
   };
 
-  const isSlotBooked = (date: Date, time: string) => {
+  const isSlotBooked = (date: Date, time: string, classroomId?: string) => {
     const dateStr = format(date, "yyyy-MM-dd");
     return bookings.some((b) => {
       if (b.date !== dateStr || b.status === BookingStatus.CANCELLED) return false;
-      // Pending bookings from others don't block slots for non-admins
+      if (classroomId && b.classroomId !== classroomId) return false;
       if (b.status === BookingStatus.PENDING && !isAdmin && b.userId !== user?.id) {
         return false;
       }
@@ -98,17 +124,12 @@ export function TimeGrid({
     });
   };
 
-  const handleSlotMouseDown = (date: Date, time: string) => {
-    if (isAllClassroomsView) return; // Can't create bookings in all classrooms view
-    if (isSlotInPast(date, time) || isSlotBooked(date, time)) return;
+  const handleSlotMouseDown = (date: Date, time: string, classroomId?: string) => {
+    if (isAllClassroomsView) return;
+    if (isSlotInPast(date, time) || isSlotBooked(date, time, classroomId)) return;
     setIsDragging(true);
-    setDragStart({ date, time });
+    setDragStart({ date, time, classroomId });
     setDragEnd(time);
-  };
-
-  const getClassroomName = (classroomId: string) => {
-    if (!classrooms) return null;
-    return classrooms.find(c => c.id === classroomId)?.name;
   };
 
   const handleSlotMouseEnter = (time: string) => {
@@ -154,6 +175,197 @@ export function TimeGrid({
     return timeIndex >= minIndex && timeIndex <= maxIndex;
   };
 
+  const getBookingColor = (booking: IBooking) => {
+    const isOwn = booking.userId === user?.id;
+
+    if (booking.status === BookingStatus.PENDING) {
+      return PENDING_COLOR;
+    }
+
+    if (isOwn) {
+      return USER_COLOR;
+    }
+
+    // Use classroom color for other people's bookings
+    return classroomColorMap.get(booking.classroomId) || CLASSROOM_COLORS[0];
+  };
+
+  // Render the side-by-side classroom view for "all classrooms"
+  if (isAllClassroomsView) {
+    return (
+      <div className="flex-1 overflow-auto">
+        <div
+          ref={gridRef}
+          className="min-w-[800px]"
+          onMouseUp={handleSlotMouseUp}
+          onMouseLeave={handleSlotMouseUp}
+        >
+          {/* Classroom color legend */}
+          <div className="sticky top-0 z-30 bg-background border-b p-2 flex flex-wrap gap-3">
+            {classrooms.map((classroom, index) => {
+              const color = CLASSROOM_COLORS[index % CLASSROOM_COLORS.length];
+              return (
+                <div key={classroom.id} className="flex items-center gap-1.5">
+                  <div className={cn("w-3 h-3 rounded", color.bg)} />
+                  <span className="text-xs font-medium">{classroom.name}</span>
+                </div>
+              );
+            })}
+            <div className="flex items-center gap-1.5 ml-4 pl-4 border-l">
+              <div className={cn("w-3 h-3 rounded", USER_COLOR.bg)} />
+              <span className="text-xs font-medium">Your bookings</span>
+            </div>
+          </div>
+
+          {/* Headers - Date + Classrooms for each day */}
+          <div className="sticky top-[44px] z-20 bg-background border-b">
+            <div
+              className="grid"
+              style={{
+                gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
+              }}
+            >
+              <div className="border-r p-2" />
+              {days.map((day) => (
+                <div
+                  key={day.toISOString()}
+                  className={cn(
+                    "border-r",
+                    isToday(day) && "bg-primary/5"
+                  )}
+                >
+                  <div className="p-2 text-center border-b">
+                    <div className="text-xs text-muted-foreground">
+                      {format(day, "EEE")}
+                    </div>
+                    <div
+                      className={cn(
+                        "text-lg font-semibold",
+                        isToday(day) && "text-primary"
+                      )}
+                    >
+                      {format(day, "d")}
+                    </div>
+                  </div>
+                  {/* Classroom sub-headers */}
+                  <div className="grid" style={{ gridTemplateColumns: `repeat(${classrooms.length}, 1fr)` }}>
+                    {classrooms.map((classroom, idx) => {
+                      const color = CLASSROOM_COLORS[idx % CLASSROOM_COLORS.length];
+                      return (
+                        <div
+                          key={classroom.id}
+                          className={cn(
+                            "p-1 text-center text-[10px] font-medium border-r last:border-r-0 truncate",
+                            color.light
+                          )}
+                          title={classroom.name}
+                        >
+                          {classroom.name}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Time grid with classroom columns */}
+          <div
+            className="relative grid"
+            style={{
+              gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
+            }}
+          >
+            {/* Time labels */}
+            <div className="border-r">
+              {timeSlots.map((time, index) => (
+                <div
+                  key={time}
+                  className="h-12 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
+                >
+                  {index % 4 === 0 && (
+                    <span className="mt-[-6px]">{time}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Day columns with classroom sub-columns */}
+            {days.map((day) => (
+              <div
+                key={day.toISOString()}
+                className={cn(
+                  "border-r grid",
+                  isToday(day) && "bg-primary/5"
+                )}
+                style={{ gridTemplateColumns: `repeat(${classrooms.length}, 1fr)` }}
+              >
+                {classrooms.map((classroom, idx) => {
+                  const dayBookings = getBookingsForDayAndClassroom(day, classroom.id);
+                  const color = CLASSROOM_COLORS[idx % CLASSROOM_COLORS.length];
+
+                  return (
+                    <div key={classroom.id} className="relative border-r last:border-r-0">
+                      {/* Time slots for this classroom */}
+                      {timeSlots.map((time) => {
+                        const isPast = isSlotInPast(day, time);
+
+                        return (
+                          <div
+                            key={time}
+                            className={cn(
+                              "h-12 border-b transition-colors",
+                              isPast && "bg-muted/50",
+                              idx % 2 === 1 && "bg-muted/20"
+                            )}
+                          />
+                        );
+                      })}
+
+                      {/* Bookings overlay */}
+                      {dayBookings.map((booking) => {
+                        const style = getBookingStyle(booking);
+                        const bookingColor = getBookingColor(booking);
+                        const isOwn = booking.userId === user?.id;
+                        const isPending = booking.status === BookingStatus.PENDING;
+
+                        return (
+                          <div
+                            key={booking.id}
+                            className={cn(
+                              "absolute left-0.5 right-0.5 rounded px-1 py-0.5 text-[10px] cursor-pointer overflow-hidden",
+                              bookingColor.bg,
+                              bookingColor.text,
+                              isPending && "border-2 border-dashed",
+                              isPending && bookingColor.border
+                            )}
+                            style={style}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onBookingClick(booking);
+                            }}
+                            title={`${booking.userName}: ${booking.startTime} - ${booking.endTime}`}
+                          >
+                            <div className="font-medium truncate">{booking.userName}</div>
+                            <div className="truncate opacity-80">
+                              {booking.startTime}-{booking.endTime}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Single classroom view (original layout with fixes)
   return (
     <div className="flex-1 overflow-auto">
       <div
@@ -205,10 +417,10 @@ export function TimeGrid({
             {timeSlots.map((time, index) => (
               <div
                 key={time}
-                className="h-12 border-b text-xs text-muted-foreground pr-2 text-right relative"
+                className="h-12 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
               >
                 {index % 4 === 0 && (
-                  <span className="absolute -top-2 right-2">{time}</span>
+                  <span className="mt-[-6px]">{time}</span>
                 )}
               </div>
             ))}
@@ -216,7 +428,7 @@ export function TimeGrid({
 
           {/* Day columns */}
           {days.map((day) => {
-            const dayBookings = getBookingsForDay(day);
+            const dayBookings = getBookingsForDayAndClassroom(day);
 
             return (
               <div
@@ -231,7 +443,7 @@ export function TimeGrid({
                   const isPast = isSlotInPast(day, time);
                   const isBooked = isSlotBooked(day, time);
                   const isInDragRange = isSlotInDragRange(day, time);
-                  const canInteract = !isAllClassroomsView && !isPast && !isBooked;
+                  const canInteract = !isPast && !isBooked;
 
                   return (
                     <div
@@ -251,21 +463,18 @@ export function TimeGrid({
                 {/* Bookings overlay */}
                 {dayBookings.map((booking) => {
                   const style = getBookingStyle(booking);
-                  const isOwn = booking.userId === user?.id;
-                  const classroomName = getClassroomName(booking.classroomId);
+                  const bookingColor = getBookingColor(booking);
+                  const isPending = booking.status === BookingStatus.PENDING;
 
                   return (
                     <div
                       key={booking.id}
                       className={cn(
                         "absolute left-1 right-1 rounded px-2 py-1 text-xs cursor-pointer overflow-hidden",
-                        isOwn
-                          ? booking.status === BookingStatus.PENDING
-                            ? "bg-yellow-500/80 text-yellow-950"
-                            : "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground",
-                        booking.status === BookingStatus.PENDING &&
-                          "border-2 border-dashed border-yellow-600"
+                        bookingColor.bg,
+                        bookingColor.text,
+                        isPending && "border-2 border-dashed",
+                        isPending && bookingColor.border
                       )}
                       style={style}
                       onClick={(e) => {
@@ -273,9 +482,6 @@ export function TimeGrid({
                         onBookingClick(booking);
                       }}
                     >
-                      {classroomName && (
-                        <div className="font-semibold truncate text-[10px] opacity-80">{classroomName}</div>
-                      )}
                       <div className="font-medium truncate">{booking.userName}</div>
                       <div className="truncate">
                         {booking.startTime} - {booking.endTime}

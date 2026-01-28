@@ -83,6 +83,10 @@ export class ClassroomService {
     return classroomRepository.findActiveClassrooms();
   }
 
+  async getBookableClassrooms(): Promise<IClassroom[]> {
+    return classroomRepository.findActiveClassrooms();
+  }
+
   async getClassroomsForUser(user: IUser): Promise<IClassroom[]> {
     if (user.role === UserRole.SUPER_ADMIN) {
       return this.getAllClassrooms();

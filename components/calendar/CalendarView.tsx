@@ -5,6 +5,7 @@ import { format, startOfWeek, endOfWeek } from "date-fns";
 import { CalendarHeader } from "./CalendarHeader";
 import { TimeGrid } from "./TimeGrid";
 import { BookingModal } from "./BookingModal";
+import { FindClassroomModal } from "./FindClassroomModal";
 import { IBooking, IClassroom, ISettings } from "@/lib/models";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBookings, useClassrooms } from "@/hooks";
@@ -22,6 +23,7 @@ export function CalendarView() {
   const [settings, setSettings] = useState<ISettings | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [findModalOpen, setFindModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<IBooking | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedStartTime, setSelectedStartTime] = useState<string>("");
@@ -123,6 +125,16 @@ export function CalendarView() {
     return cancelBooking(selectedBooking.id);
   };
 
+  const handleFindClassroomSelect = (classroomId: string, date: Date, startTime: string, endTime: string) => {
+    setSelectedClassroomId(classroomId);
+    setSelectedBooking(null);
+    setSelectedDate(date);
+    setSelectedStartTime(startTime);
+    setSelectedEndTime(endTime);
+    setCurrentDate(date);
+    setModalOpen(true);
+  };
+
   const selectedClassroom = selectedClassroomId === "all"
     ? undefined
     : classrooms.find((c) => c.id === selectedClassroomId);
@@ -160,6 +172,7 @@ export function CalendarView() {
         onDateChange={setCurrentDate}
         onViewChange={setView}
         onClassroomChange={setSelectedClassroomId}
+        onFindClick={() => setFindModalOpen(true)}
       />
 
       <div className="flex-1 mt-4 overflow-auto">
@@ -185,6 +198,15 @@ export function CalendarView() {
         operatingHours={settings.operatingHours}
         onSave={handleSaveBooking}
         onCancel={handleCancelBooking}
+      />
+
+      <FindClassroomModal
+        isOpen={findModalOpen}
+        onClose={() => setFindModalOpen(false)}
+        classrooms={classrooms}
+        bookings={bookings}
+        operatingHours={settings.operatingHours}
+        onSelectClassroom={handleFindClassroomSelect}
       />
     </div>
   );
