@@ -23,7 +23,7 @@ interface TimeGridProps {
   view: "day" | "week";
   bookings: IBooking[];
   operatingHours: { start: string; end: string };
-  onSlotClick: (date: Date, startTime: string, endTime: string) => void;
+  onSlotClick: (date: Date, startTime: string, endTime: string, classroomId?: string) => void;
   onBookingClick: (booking: IBooking) => void;
   classrooms?: IClassroom[];
   selectedClassroom?: IClassroom;
@@ -122,7 +122,6 @@ export function TimeGrid({
   };
 
   const handleSlotMouseDown = (date: Date, time: string, classroomId?: string) => {
-    if (isAllClassroomsView) return;
     if (isSlotInPast(date, time) || isSlotBooked(date, time, classroomId)) return;
     setIsDragging(true);
     setDragStart({ date, time, classroomId });
@@ -151,16 +150,18 @@ export function TimeGrid({
     const actualStartTime = timeSlots[actualStartIndex];
     const actualEndTime = timeSlots[actualEndIndex + 1] || operatingHours.end;
 
-    onSlotClick(dragStart.date, actualStartTime, actualEndTime);
+    onSlotClick(dragStart.date, actualStartTime, actualEndTime, dragStart.classroomId);
 
     setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
   };
 
-  const isSlotInDragRange = (date: Date, time: string) => {
+  const isSlotInDragRange = (date: Date, time: string, classroomId?: string) => {
     if (!isDragging || !dragStart || !dragEnd) return false;
     if (!isSameDay(date, dragStart.date)) return false;
+    // In all classrooms view, check if we're in the same classroom column
+    if (classroomId && dragStart.classroomId && classroomId !== dragStart.classroomId) return false;
 
     const startIndex = timeSlots.indexOf(dragStart.time);
     const endIndex = timeSlots.indexOf(dragEnd);
@@ -313,6 +314,9 @@ export function TimeGrid({
                       {/* Time slots for this classroom */}
                       {timeSlots.map((time) => {
                         const isPast = isSlotInPast(day, time);
+                        const isBooked = isSlotBooked(day, time, classroom.id);
+                        const isInDragRange = isSlotInDragRange(day, time, classroom.id);
+                        const canInteract = !isPast && !isBooked;
 
                         return (
                           <div
@@ -320,8 +324,12 @@ export function TimeGrid({
                             className={cn(
                               "h-12 border-b transition-colors",
                               isPast && "bg-muted/50",
-                              idx % 2 === 1 && "bg-muted/20"
+                              idx % 2 === 1 && "bg-muted/20",
+                              canInteract ? "cursor-pointer hover:bg-primary/10" : "cursor-default",
+                              isInDragRange && "bg-primary/20"
                             )}
+                            onMouseDown={() => handleSlotMouseDown(day, time, classroom.id)}
+                            onMouseEnter={() => handleSlotMouseEnter(time)}
                           />
                         );
                       })}

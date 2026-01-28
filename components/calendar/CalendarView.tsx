@@ -80,9 +80,17 @@ export function CalendarView() {
     : undefined;
 
   const handleSlotClick = useCallback(
-    (date: Date, startTime: string, endTime: string) => {
-      // Don't allow creating bookings when viewing all classrooms
-      if (selectedClassroomId === "all") return;
+    (date: Date, startTime: string, endTime: string, classroomId?: string) => {
+      // If clicking in all classrooms view, use the clicked classroom
+      // Otherwise use the selected classroom
+      const targetClassroomId = classroomId || (selectedClassroomId !== "all" ? selectedClassroomId : null);
+
+      if (!targetClassroomId) return;
+
+      // Temporarily set the classroom if clicked from all view
+      if (classroomId && selectedClassroomId === "all") {
+        setSelectedClassroomId(classroomId);
+      }
 
       setSelectedBooking(null);
       setSelectedDate(date);
