@@ -16,7 +16,7 @@ import {
   WhereFilterOp,
   OrderByDirection,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { getFirebaseDb } from "@/lib/firebase";
 
 export interface IRepository<T> {
   findById(id: string): Promise<T | null>;
@@ -51,11 +51,11 @@ export abstract class BaseRepository<T extends { id: string }> implements IRepos
   protected abstract fromFirestore(id: string, data: DocumentData): T;
 
   protected getCollectionRef() {
-    return collection(db, this.collectionName);
+    return collection(getFirebaseDb(), this.collectionName);
   }
 
   protected getDocRef(id: string) {
-    return doc(db, this.collectionName, id);
+    return doc(getFirebaseDb(), this.collectionName, id);
   }
 
   async findById(id: string): Promise<T | null> {
