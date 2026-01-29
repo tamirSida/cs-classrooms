@@ -2,7 +2,65 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { Collections } from "@/lib/firebase";
-import { BookingStatus } from "@/lib/models";
+import { BookingStatus, IBooking, UserRole } from "@/lib/models";
+import { Resend } from "resend";
+import {
+  bookingConfirmedTemplate,
+  bookingPendingTemplate,
+  BookingEmailData,
+} from "@/lib/email";
+
+// Server-side email sending (has access to RESEND_API_KEY)
+async function sendBookingEmail(booking: IBooking, classroomName: string): Promise<boolean> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("[API/bookings] RESEND_API_KEY not configured, skipping email");
+    return false;
+  }
+
+  const resend = new Resend(apiKey);
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "room@efi-arazi.com";
+  const fromName = process.env.RESEND_FROM_NAME || "ClassScheduler";
+
+  const isPending = booking.status === BookingStatus.PENDING;
+  const emailData: BookingEmailData = {
+    userName: booking.userName,
+    userEmail: booking.userEmail,
+    classroomName,
+    date: booking.date,
+    startTime: booking.startTime,
+    endTime: booking.endTime,
+  };
+
+  const html = isPending
+    ? bookingPendingTemplate(emailData)
+    : bookingConfirmedTemplate(emailData);
+
+  const subject = isPending
+    ? `Booking Submitted - ${classroomName}`
+    : `Booking Confirmed - ${classroomName}`;
+
+  try {
+    console.log(`[API/bookings] Sending email to: ${booking.userEmail}, status: ${booking.status}`);
+    const { data, error } = await resend.emails.send({
+      from: `${fromName} <${fromEmail}>`,
+      to: booking.userEmail,
+      subject,
+      html,
+    });
+
+    if (error) {
+      console.error("[API/bookings] Resend error:", error);
+      return false;
+    }
+
+    console.log(`[API/bookings] Email sent! ID: ${data?.id}`);
+    return true;
+  } catch (error) {
+    console.error("[API/bookings] Failed to send email:", error);
+    return false;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +73,6 @@ export async function POST(request: NextRequest) {
       date,
       startTime,
       endTime,
-      status = BookingStatus.CONFIRMED,
     } = body;
 
     if (!classroomId || !userId || !userEmail || !userName || !date || !startTime || !endTime) {
@@ -26,6 +83,28 @@ export async function POST(request: NextRequest) {
     }
 
     const db = adminDb();
+
+    // Get classroom data
+    const classroomDoc = await db.collection(Collections.CLASSROOMS).doc(classroomId).get();
+    if (!classroomDoc.exists) {
+      return NextResponse.json(
+        { message: "Classroom not found" },
+        { status: 404 }
+      );
+    }
+    const classroomData = classroomDoc.data();
+    const classroomName = classroomData?.name || "Classroom";
+    const requiresApproval = classroomData?.config?.requiresApproval ?? false;
+
+    // Get user role to determine if admin (auto-approve)
+    const userDoc = await db.collection(Collections.USERS).doc(userId).get();
+    const userRole = userDoc.exists ? userDoc.data()?.role : UserRole.STUDENT;
+    const isAdmin = userRole === UserRole.ADMIN || userRole === UserRole.SUPER_ADMIN;
+
+    // Determine status: admins auto-confirm, otherwise check classroom setting
+    const status = isAdmin || !requiresApproval
+      ? BookingStatus.CONFIRMED
+      : BookingStatus.PENDING;
 
     const bookingData = {
       classroomId,
@@ -42,10 +121,15 @@ export async function POST(request: NextRequest) {
 
     const docRef = await db.collection(Collections.BOOKINGS).add(bookingData);
 
-    return NextResponse.json({
+    const booking: IBooking = {
       id: docRef.id,
       ...bookingData,
-    });
+    };
+
+    // Send confirmation email (server-side)
+    await sendBookingEmail(booking, classroomName);
+
+    return NextResponse.json(booking);
   } catch (error) {
     console.error("Error creating booking:", error);
     return NextResponse.json(

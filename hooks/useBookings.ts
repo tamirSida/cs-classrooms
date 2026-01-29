@@ -77,13 +77,22 @@ export function useBookings() {
       setLoading(true);
       setError(null);
       try {
-        const result = await bookingService.createBooking(data, user);
-        if (result.error) {
-          setError(result.error);
-          return { success: false, error: result.error };
+        // Use API route for booking creation (server-side email sending)
+        const response = await fetch("/api/bookings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          setError(result.message || "Failed to create booking");
+          return { success: false, error: result.message };
         }
-        setBookings((prev) => [...prev, result.booking]);
-        return { success: true, booking: result.booking };
+
+        setBookings((prev) => [...prev, result]);
+        return { success: true, booking: result };
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Failed to create booking";
         setError(errorMsg);

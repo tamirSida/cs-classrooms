@@ -149,7 +149,8 @@ export class BookingService {
     if (classroom) {
       const updatedBooking = await bookingRepository.findById(bookingId);
       if (updatedBooking) {
-        await emailService.sendBookingCancelled(updatedBooking, classroom.name);
+        // Pass the canceller's ID to determine which email template to use
+        await emailService.sendBookingCancelled(updatedBooking, classroom.name, user.id);
       }
     }
 
@@ -172,7 +173,7 @@ export class BookingService {
     const updatedBooking = await bookingRepository.findById(bookingId);
 
     if (classroom && updatedBooking) {
-      await emailService.sendBookingConfirmation(updatedBooking, classroom.name);
+      await emailService.sendBookingApproved(updatedBooking, classroom.name);
     }
 
     return { success: true };
@@ -188,7 +189,14 @@ export class BookingService {
       return { success: false, error: "Booking is not pending approval" };
     }
 
+    const classroom = await classroomRepository.findById(booking.classroomId);
+
     await bookingRepository.cancelBooking(bookingId, userId);
+
+    // Send rejection email
+    if (classroom) {
+      await emailService.sendBookingRejected(booking, classroom.name);
+    }
 
     return { success: true };
   }
