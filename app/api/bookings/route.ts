@@ -7,6 +7,8 @@ import { Resend } from "resend";
 import {
   bookingConfirmedTemplate,
   bookingPendingTemplate,
+  bookingConfirmedText,
+  bookingPendingText,
   BookingEmailData,
 } from "@/lib/email";
 
@@ -36,6 +38,10 @@ async function sendBookingEmail(booking: IBooking, classroomName: string): Promi
     ? bookingPendingTemplate(emailData)
     : bookingConfirmedTemplate(emailData);
 
+  const text = isPending
+    ? bookingPendingText(emailData)
+    : bookingConfirmedText(emailData);
+
   const subject = isPending
     ? `Booking Submitted - ${classroomName}`
     : `Booking Confirmed - ${classroomName}`;
@@ -47,6 +53,7 @@ async function sendBookingEmail(booking: IBooking, classroomName: string): Promi
       to: booking.userEmail,
       subject,
       html,
+      text,
     });
 
     if (error) {

@@ -246,3 +246,51 @@ export function bookingModifiedTemplate(data: BookingModifiedData): string {
     `,
   });
 }
+
+// ============================================
+// Plain Text Versions (for better deliverability)
+// ============================================
+
+function bookingDetailsText(data: BookingEmailData, status: string): string {
+  return `
+Classroom: ${data.classroomName}
+Date: ${formatDate(data.date)}
+Time: ${data.startTime} - ${data.endTime}
+Status: ${status}
+`.trim();
+}
+
+const EMAIL_FOOTER = `
+---
+ClassScheduler - Efi Arazi School of Computer Science
+This is an automated message. Please do not reply to this email.
+`.trim();
+
+export function bookingConfirmedText(data: BookingEmailData): string {
+  return `
+Hello ${data.userName},
+
+Great news! Your classroom booking has been confirmed and is ready for you.
+
+${bookingDetailsText(data, "Confirmed")}
+
+Remember: Please arrive on time and ensure the room is left clean after use.
+
+${EMAIL_FOOTER}
+  `.trim();
+}
+
+export function bookingPendingText(data: BookingEmailData): string {
+  return `
+Hello ${data.userName},
+
+Your booking request has been submitted and is awaiting admin approval.
+You will receive another email once your booking is approved or declined.
+
+${bookingDetailsText(data, "Pending Approval")}
+
+Note: This booking is not yet confirmed. Please wait for approval before planning to use the room.
+
+${EMAIL_FOOTER}
+  `.trim();
+}

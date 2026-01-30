@@ -10,14 +10,16 @@ import { UserForm } from "@/components/forms/UserForm";
 import { useAuth } from "@/contexts/AuthContext";
 import { userService } from "@/lib/services";
 import { IUser, UserRole } from "@/lib/models";
-import { Plus, Pencil, UserX, UserCheck } from "lucide-react";
+import { Plus, Pencil, UserX, UserCheck, Mail } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BulkInviteModal } from "@/components/users/BulkInviteModal";
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<IUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<IUser | null>(null);
 
   const fetchUsers = async () => {
@@ -131,7 +133,11 @@ export default function UsersPage() {
   return (
     <DashboardLayout title="Users">
       <div className="space-y-6">
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setInviteModalOpen(true)}>
+            <Mail className="h-4 w-4 mr-2" />
+            Invite Users
+          </Button>
           <Button onClick={handleCreate}>
             <Plus className="h-4 w-4 mr-2" />
             Add User
@@ -216,6 +222,13 @@ export default function UsersPage() {
           user={selectedUser}
           onSave={handleSave}
           currentUserId={currentUser.id}
+        />
+      )}
+
+      {inviteModalOpen && (
+        <BulkInviteModal
+          onClose={() => setInviteModalOpen(false)}
+          onSuccess={fetchUsers}
         />
       )}
     </DashboardLayout>
