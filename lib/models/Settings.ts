@@ -11,6 +11,7 @@ export interface ISettings {
   defaultMaxTimePerDay: number; // Minutes, -1 = unlimited
   timeSlotDuration: number; // Minutes (5, 10, 15, 30, 60)
   requiresApproval: boolean; // Global setting - student bookings need admin approval
+  signupCode?: string; // Code for QR-based student self-signup
   updatedAt: Timestamp;
   updatedBy: string;
 }
@@ -20,6 +21,7 @@ export interface ISettingsUpdate {
   defaultMaxTimePerDay?: number;
   timeSlotDuration?: number;
   requiresApproval?: boolean;
+  signupCode?: string;
 }
 
 export class Settings implements ISettings {
@@ -30,7 +32,8 @@ export class Settings implements ISettings {
     public timeSlotDuration: number,
     public requiresApproval: boolean,
     public updatedAt: Timestamp,
-    public updatedBy: string
+    public updatedBy: string,
+    public signupCode?: string
   ) {}
 
   static readonly DOCUMENT_ID = "global";
@@ -44,7 +47,8 @@ export class Settings implements ISettings {
       data.timeSlotDuration,
       data.requiresApproval ?? false,
       data.updatedAt,
-      data.updatedBy
+      data.updatedBy,
+      data.signupCode
     );
   }
 
@@ -68,6 +72,7 @@ export class Settings implements ISettings {
       defaultMaxTimePerDay: this.defaultMaxTimePerDay,
       timeSlotDuration: this.timeSlotDuration,
       requiresApproval: this.requiresApproval,
+      signupCode: this.signupCode,
       updatedAt: this.updatedAt,
       updatedBy: this.updatedBy,
     };

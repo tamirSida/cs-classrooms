@@ -18,7 +18,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { settingsService } from "@/lib/services";
 import { ISettings } from "@/lib/models";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Save } from "lucide-react";
+import { Save, Copy, RefreshCw, QrCode } from "lucide-react";
+
+function generateRandomCode(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let i = 0; i < 16; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -33,6 +42,8 @@ export default function SettingsPage() {
   const [maxTimeMode, setMaxTimeMode] = useState<"unlimited" | "custom">("custom");
   const [customMaxTime, setCustomMaxTime] = useState(60);
   const [timeSlotDuration, setTimeSlotDuration] = useState(15);
+  const [signupCode, setSignupCode] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -53,6 +64,7 @@ export default function SettingsPage() {
         setCustomMaxTime(data.defaultMaxTimePerDay);
       }
 
+      setSignupCode(data.signupCode || "");
       setLoading(false);
     };
 
@@ -77,6 +89,7 @@ export default function SettingsPage() {
           },
           defaultMaxTimePerDay: maxTime,
           timeSlotDuration,
+          signupCode: signupCode || undefined,
         },
         user.id
       );
@@ -212,6 +225,76 @@ export default function SettingsPage() {
                 This determines the minimum booking duration and grid intervals.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5" />
+              QR Code Signup
+            </CardTitle>
+            <CardDescription>
+              Allow students to self-register via QR code
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="signupCode">Signup Code</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="signupCode"
+                  value={signupCode}
+                  onChange={(e) => setSignupCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                  placeholder="e.g., cs-arazi-2024"
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setSignupCode(generateRandomCode())}
+                  title="Generate random code"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to disable QR code signup. Only lowercase letters, numbers, and hyphens allowed.
+              </p>
+            </div>
+
+            {signupCode && (
+              <div className="space-y-2">
+                <Label>Signup URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/join/${signupCode}`}
+                    className="flex-1 bg-muted"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/join/${signupCode}`);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    title="Copy URL"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                {copied && (
+                  <p className="text-xs text-green-600">Copied to clipboard!</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Generate a QR code for this URL to allow students to sign up.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
