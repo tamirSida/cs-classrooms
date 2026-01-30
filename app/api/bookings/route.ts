@@ -128,10 +128,11 @@ export async function POST(request: NextRequest) {
 
     const docRef = await db.collection(Collections.BOOKINGS).add(bookingData);
 
-    const booking: IBooking = {
+    // Cast to IBooking - admin SDK Timestamp is compatible at runtime
+    const booking = {
       id: docRef.id,
       ...bookingData,
-    };
+    } as IBooking;
 
     // Send confirmation email (server-side)
     await sendBookingEmail(booking, classroomName);

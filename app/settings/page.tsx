@@ -18,7 +18,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { settingsService } from "@/lib/services";
 import { ISettings } from "@/lib/models";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Save, Copy, RefreshCw, QrCode } from "lucide-react";
+import { Save, Copy, RefreshCw, QrCode, Download } from "lucide-react";
+import QRCode from "qrcode";
 
 function generateRandomCode(): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -44,6 +45,8 @@ export default function SettingsPage() {
   const [timeSlotDuration, setTimeSlotDuration] = useState(15);
   const [signupCode, setSignupCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -70,6 +73,37 @@ export default function SettingsPage() {
 
     fetchSettings();
   }, [user]);
+
+  // Generate QR code when signup code changes
+  useEffect(() => {
+    const generateQR = async () => {
+      if (signupCode && typeof window !== "undefined") {
+        try {
+          const url = `${window.location.origin}/join/${signupCode}`;
+          const qrDataUrl = await QRCode.toDataURL(url, {
+            width: 400,
+            margin: 2,
+            color: { dark: "#000000", light: "#ffffff" },
+          });
+          setQrCodeUrl(qrDataUrl);
+        } catch {
+          setQrCodeUrl(null);
+        }
+      } else {
+        setQrCodeUrl(null);
+      }
+    };
+
+    generateQR();
+  }, [signupCode]);
+
+  const downloadQRCode = () => {
+    if (!qrCodeUrl) return;
+    const link = document.createElement("a");
+    link.download = `classscheduler-signup-qr-${signupCode}.png`;
+    link.href = qrCodeUrl;
+    link.click();
+  };
 
   const handleSave = async () => {
     if (!user) return;
@@ -265,35 +299,68 @@ export default function SettingsPage() {
             </div>
 
             {signupCode && (
-              <div className="space-y-2">
-                <Label>Signup URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    readOnly
-                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/join/${signupCode}`}
-                    className="flex-1 bg-muted"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/join/${signupCode}`);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    title="Copy URL"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+              <>
+                <div className="space-y-2">
+                  <Label>Signup URL</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={`${typeof window !== "undefined" ? window.location.origin : ""}/join/${signupCode}`}
+                      className="flex-1 bg-muted"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/join/${signupCode}`);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      title="Copy URL"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {copied && (
+                    <p className="text-xs text-green-600">Copied to clipboard!</p>
+                  )}
                 </div>
-                {copied && (
-                  <p className="text-xs text-green-600">Copied to clipboard!</p>
+
+                {qrCodeUrl && (
+                  <div className="space-y-3">
+                    <Label>QR Code</Label>
+                    <div className="flex flex-col items-center gap-4 p-4 border rounded-lg bg-white">
+                      <img
+                        src={qrCodeUrl}
+                        alt="Signup QR Code"
+                        className="w-48 h-48"
+                      />
+                      <p className="text-sm text-muted-foreground text-center">
+                        Scan to sign up as a student
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={downloadQRCode}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Download PNG
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowQrModal(true)}
+                        >
+                          <QrCode className="h-4 w-4 mr-2" />
+                          View Large
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 )}
-                <p className="text-xs text-muted-foreground">
-                  Generate a QR code for this URL to allow students to sign up.
-                </p>
-              </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -317,6 +384,48 @@ export default function SettingsPage() {
           </Button>
         </div>
       </div>
+      {/* QR Code Modal */}
+      {showQrModal && qrCodeUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowQrModal(false)}
+          />
+          <div className="relative bg-white rounded-xl p-8 max-w-md w-full shadow-xl">
+            <button
+              onClick={() => setShowQrModal(false)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Student Signup QR Code</h2>
+              <div className="bg-white p-4 rounded-lg inline-block border">
+                <img
+                  src={qrCodeUrl}
+                  alt="Signup QR Code"
+                  className="w-72 h-72"
+                />
+              </div>
+              <p className="text-sm text-gray-600 mt-4 mb-6">
+                Scan this code to create a student account
+              </p>
+              <div className="flex gap-2 justify-center">
+                <Button onClick={downloadQRCode}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download PNG
+                </Button>
+                <Button variant="outline" onClick={() => setShowQrModal(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

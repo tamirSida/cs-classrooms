@@ -75,10 +75,13 @@ export async function POST(request: NextRequest) {
     // Create Firestore user document
     const userData: Omit<IUser, "id"> = {
       email,
-      name,
+      displayName: name,
       role: UserRole.STUDENT,
-      active: true,
+      assignedClassrooms: [],
       createdAt: Timestamp.now() as any,
+      updatedAt: Timestamp.now() as any,
+      createdBy: "self-signup",
+      isActive: true,
     };
 
     await db.collection(Collections.USERS).doc(userRecord.uid).set(userData);
