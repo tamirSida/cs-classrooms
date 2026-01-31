@@ -400,7 +400,7 @@ export default function PreviewPage() {
 
             {/* Time grid */}
             <div
-              className="relative grid"
+              className="relative grid py-3"
               style={{
                 gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
               }}
@@ -413,10 +413,14 @@ export default function PreviewPage() {
                     className="h-10 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
                   >
                     {index % 4 === 0 && (
-                      <span className="mt-[-6px]">{time}</span>
+                      <span className="-mt-1">{time}</span>
                     )}
                   </div>
                 ))}
+                {/* End time label */}
+                <div className="h-0 text-xs text-muted-foreground pr-2 text-right flex items-start justify-end">
+                  <span className="-mt-1">{settings?.operatingHours.end}</span>
+                </div>
               </div>
 
               {/* Day columns */}

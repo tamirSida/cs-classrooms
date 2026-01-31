@@ -276,7 +276,7 @@ export function TimeGrid({
 
           {/* Time grid with classroom columns */}
           <div
-            className="relative grid pt-2"
+            className="relative grid py-3"
             style={{
               gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
             }}
@@ -293,6 +293,10 @@ export function TimeGrid({
                   )}
                 </div>
               ))}
+              {/* End time label */}
+              <div className="h-0 text-xs text-muted-foreground pr-2 text-right flex items-start justify-end">
+                <span className="-mt-1">{operatingHours.end}</span>
+              </div>
             </div>
 
             {/* Day columns with classroom sub-columns */}
@@ -418,7 +422,7 @@ export function TimeGrid({
 
         {/* Time grid */}
         <div
-          className="relative grid pt-2"
+          className="relative grid py-3"
           style={{
             gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
           }}
@@ -435,6 +439,10 @@ export function TimeGrid({
                 )}
               </div>
             ))}
+            {/* End time label */}
+            <div className="h-0 text-xs text-muted-foreground pr-2 text-right flex items-start justify-end">
+              <span className="-mt-1">{operatingHours.end}</span>
+            </div>
           </div>
 
           {/* Day columns */}
