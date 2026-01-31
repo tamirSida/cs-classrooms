@@ -10,6 +10,7 @@ import {
   parse,
   isBefore,
 } from "date-fns";
+import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 import { IBooking, IClassroom, ISettings, TimeSlotFactory } from "@/lib/models";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ export default function PreviewPage() {
   const [classrooms, setClassrooms] = useState<IClassroom[]>([]);
   const [settings, setSettings] = useState<ISettings | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
 
   // Display settings
   const [view, setView] = useState<"day" | "week">("day");
@@ -106,6 +108,20 @@ export default function PreviewPage() {
     );
   }, [settings]);
 
+  // Generate QR code for signup page
+  useEffect(() => {
+    const signupUrl = settings?.signupCode
+      ? `${window.location.origin}/signup?code=${settings.signupCode}`
+      : `${window.location.origin}/signup`;
+
+    QRCode.toDataURL(signupUrl, {
+      width: 120,
+      margin: 1,
+      color: { dark: "#000000", light: "#ffffff" },
+    }).then(setQrCodeUrl).catch(console.error);
+  }, [settings?.signupCode]);
+
+
   const days = useMemo(() => {
     if (view === "day") {
       return [currentDate];
@@ -137,10 +153,11 @@ export default function PreviewPage() {
     const startSlotIndex = timeSlots.findIndex((t) => t === booking.startTime);
     const endSlotIndex = timeSlots.findIndex((t) => t === booking.endTime);
     const slotCount = endSlotIndex - startSlotIndex;
+    const totalSlots = timeSlots.length;
 
     return {
-      top: `${startSlotIndex * 40}px`,
-      height: `${slotCount * 40 - 2}px`,
+      top: `${(startSlotIndex / totalSlots) * 100}%`,
+      height: `calc(${(slotCount / totalSlots) * 100}% - 2px)`,
     };
   };
 
@@ -193,7 +210,7 @@ export default function PreviewPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
       <div className="sticky top-0 z-50 bg-background border-b px-4 py-3">
         <div className="flex items-center justify-between">
@@ -332,7 +349,15 @@ export default function PreviewPage() {
       </div>
 
       {/* Calendar grid */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-hidden p-4 relative">
+        {/* QR Code overlay */}
+        {qrCodeUrl && (
+          <div className="absolute bottom-4 right-4 z-20 bg-white p-2 rounded-lg shadow-lg">
+            <img src={qrCodeUrl} alt="Signup QR Code" className="w-24 h-24" />
+            <p className="text-[10px] text-center text-muted-foreground mt-1">Scan to sign up</p>
+          </div>
+        )}
+
         {filteredClassrooms.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -343,10 +368,10 @@ export default function PreviewPage() {
             </div>
           </div>
         ) : (
-          <div className="min-w-[600px]">
+          <div className="h-full flex flex-col">
             {/* Headers */}
             <div
-              className="sticky top-0 z-10 bg-background border-b grid"
+              className="z-10 bg-background border-b grid shrink-0"
               style={{
                 gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
               }}
@@ -400,17 +425,17 @@ export default function PreviewPage() {
 
             {/* Time grid */}
             <div
-              className="relative grid py-3"
+              className="flex-1 grid min-h-0"
               style={{
                 gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
               }}
             >
               {/* Time labels */}
-              <div className="border-r">
+              <div className="border-r flex flex-col">
                 {timeSlots.map((time, index) => (
                   <div
                     key={time}
-                    className="h-10 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
+                    className="flex-1 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
                   >
                     {index % 4 === 0 && (
                       <span className="-mt-1">{time}</span>
@@ -438,7 +463,7 @@ export default function PreviewPage() {
                     const color = classroomColorMap.get(classroom.id)!;
 
                     return (
-                      <div key={classroom.id} className="relative border-r last:border-r-0">
+                      <div key={classroom.id} className="relative border-r last:border-r-0 flex flex-col">
                         {/* Time slots */}
                         {timeSlots.map((time) => {
                           const isPast = isSlotInPast(day, time);
@@ -447,7 +472,7 @@ export default function PreviewPage() {
                             <div
                               key={time}
                               className={cn(
-                                "h-10 border-b",
+                                "flex-1 border-b",
                                 isPast && "bg-muted/50",
                                 idx % 2 === 1 && "bg-muted/20"
                               )}
