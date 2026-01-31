@@ -45,6 +45,7 @@ export default function PreviewPage() {
   const [selectedClassrooms, setSelectedClassrooms] = useState<Set<string>>(new Set());
   const [showSettings, setShowSettings] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showQr, setShowQr] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
   // Load all data from API
@@ -293,6 +294,19 @@ export default function PreviewPage() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Show QR</Label>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={showQr}
+                      onCheckedChange={setShowQr}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {showQr ? "Visible" : "Hidden"}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="space-y-2 flex-1">
                   <div className="flex items-center justify-between">
                     <Label className="text-sm font-medium">Classrooms</Label>
@@ -351,7 +365,7 @@ export default function PreviewPage() {
       {/* Calendar grid */}
       <div className="flex-1 overflow-hidden p-4 relative">
         {/* QR Code overlay */}
-        {qrCodeUrl && (
+        {showQr && qrCodeUrl && (
           <div className="absolute bottom-4 right-4 z-20 bg-white p-2 rounded-lg shadow-lg">
             <img src={qrCodeUrl} alt="Signup QR Code" className="w-24 h-24" />
             <p className="text-[10px] text-center text-muted-foreground mt-1">Scan to sign up</p>
