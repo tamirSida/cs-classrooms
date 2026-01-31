@@ -276,7 +276,7 @@ export function TimeGrid({
 
           {/* Time grid with classroom columns */}
           <div
-            className="relative grid py-3"
+            className="relative grid pt-4 pb-3"
             style={{
               gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
             }}
@@ -422,7 +422,7 @@ export function TimeGrid({
 
         {/* Time grid */}
         <div
-          className="relative grid py-3"
+          className="relative grid pt-4 pb-3"
           style={{
             gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
           }}

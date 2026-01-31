@@ -439,7 +439,7 @@ export default function PreviewPage() {
 
             {/* Time grid */}
             <div
-              className="flex-1 grid min-h-0"
+              className="flex-1 grid min-h-0 pt-2"
               style={{
                 gridTemplateColumns: `60px repeat(${days.length}, 1fr)`,
               }}
