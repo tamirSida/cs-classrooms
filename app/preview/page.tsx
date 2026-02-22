@@ -111,9 +111,12 @@ export default function PreviewPage() {
 
   // Generate QR code for signup page
   useEffect(() => {
-    const signupUrl = settings?.signupCode
-      ? `${window.location.origin}/signup?code=${settings.signupCode}`
-      : `${window.location.origin}/signup`;
+    if (!settings?.signupCode) {
+      setQrCodeUrl(null);
+      return;
+    }
+
+    const signupUrl = `${window.location.origin}/join/${settings.signupCode}`;
 
     QRCode.toDataURL(signupUrl, {
       width: 120,

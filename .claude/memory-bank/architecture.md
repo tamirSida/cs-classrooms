@@ -133,6 +133,21 @@
 | **I**nterface Segregation | Small, focused interfaces per domain |
 | **D**ependency Inversion | Services depend on repository interfaces |
 
+## Key Routes
+
+### Public/Display Routes
+- `/preview` - Public display page (e.g., for TV screens) showing calendar and optional signup QR code
+  - Fetches settings via `/api/preview` (calls `settingsService.getSettings("system")`)
+  - QR code generated client-side using `qrcode` library pointing to `/join/{signupCode}`
+  - Toggle QR visibility with `showQr` state
+- `/join/[code]` - Signup join endpoint that students scan via QR code
+- `/signup` - Student signup page
+
+### Settings & Config
+- `/settings` - Admin settings page, manages `signupCode` stored in `ISettings` model (`lib/models/Settings.ts`)
+  - `signupCode` field drives QR code generation on both settings and preview pages
+  - QR codes must always use `/join/{signupCode}` URL format (not `/signup?code=`)
+
 ## Security Model
 
 ```
