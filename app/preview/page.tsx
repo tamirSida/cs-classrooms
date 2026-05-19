@@ -3,8 +3,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   format,
-  startOfWeek,
-  endOfWeek,
   addDays,
   isToday,
   parse,
@@ -41,7 +39,7 @@ export default function PreviewPage() {
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
 
   // Display settings
-  const [view, setView] = useState<"day" | "week">("day");
+  const [view, setView] = useState<"day" | "week">("week");
   const [selectedClassrooms, setSelectedClassrooms] = useState<Set<string>>(new Set());
   const [showSettings, setShowSettings] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -50,13 +48,14 @@ export default function PreviewPage() {
 
   // Load all data from API
   const loadData = useCallback(async () => {
+    const today = new Date();
     const start = view === "day"
       ? format(currentDate, "yyyy-MM-dd")
-      : format(startOfWeek(currentDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
+      : format(today, "yyyy-MM-dd");
 
     const end = view === "day"
       ? format(currentDate, "yyyy-MM-dd")
-      : format(endOfWeek(currentDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
+      : format(addDays(today, 3), "yyyy-MM-dd");
 
     try {
       const response = await fetch(`/api/preview?startDate=${start}&endDate=${end}`);
@@ -130,9 +129,9 @@ export default function PreviewPage() {
     if (view === "day") {
       return [currentDate];
     }
-    const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
-    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  }, [currentDate, view]);
+    const today = new Date();
+    return Array.from({ length: 4 }, (_, i) => addDays(today, i));
+  }, [currentDate, view, lastRefresh]);
 
   const filteredClassrooms = useMemo(() => {
     return classrooms.filter((c) => selectedClassrooms.has(c.id));
@@ -238,27 +237,32 @@ export default function PreviewPage() {
                 size="sm"
                 onClick={() => setView("week")}
               >
-                Week
+                4 Days
               </Button>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Date navigation */}
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" onClick={() => navigateDate("prev")}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={goToToday}>
-                <Calendar className="h-4 w-4 mr-2" />
-                {view === "day"
-                  ? format(currentDate, "EEEE, MMM d")
-                  : `Week of ${format(startOfWeek(currentDate, { weekStartsOn: 0 }), "MMM d")}`}
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => navigateDate("next")}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            {view === "day" ? (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" onClick={() => navigateDate("prev")}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={goToToday}>
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {format(currentDate, "EEEE, MMM d")}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => navigateDate("next")}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm font-medium px-3 py-1.5 border rounded-md">
+                <Calendar className="h-4 w-4" />
+                {format(new Date(), "MMM d")} – {format(addDays(new Date(), 3), "MMM d")}
+              </div>
+            )}
 
             {/* Refresh */}
             <Button variant="ghost" size="sm" onClick={loadBookings}>
