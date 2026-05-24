@@ -92,7 +92,9 @@ export function TimeGrid({
 
   const getBookingStyle = (booking: IBooking) => {
     const startSlotIndex = timeSlots.findIndex((t) => t === booking.startTime);
-    const endSlotIndex = timeSlots.findIndex((t) => t === booking.endTime);
+    // endTime can equal operatingHours.end, which isn't in timeSlots — treat as one past last.
+    const rawEndIndex = timeSlots.findIndex((t) => t === booking.endTime);
+    const endSlotIndex = rawEndIndex === -1 ? timeSlots.length : rawEndIndex;
     const slotCount = endSlotIndex - startSlotIndex;
 
     return {

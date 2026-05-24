@@ -49,14 +49,10 @@ export default function PreviewPage() {
 
   // Load all data from API
   const loadData = useCallback(async () => {
-    const today = new Date();
-    const start = view === "day"
-      ? format(currentDate, "yyyy-MM-dd")
-      : format(today, "yyyy-MM-dd");
-
+    const start = format(currentDate, "yyyy-MM-dd");
     const end = view === "day"
       ? format(currentDate, "yyyy-MM-dd")
-      : format(addDays(today, 3), "yyyy-MM-dd");
+      : format(addDays(currentDate, 3), "yyyy-MM-dd");
 
     try {
       const response = await fetch(`/api/preview?startDate=${start}&endDate=${end}`);
@@ -130,9 +126,8 @@ export default function PreviewPage() {
     if (view === "day") {
       return [currentDate];
     }
-    const today = new Date();
-    return Array.from({ length: 4 }, (_, i) => addDays(today, i));
-  }, [currentDate, view, lastRefresh]);
+    return Array.from({ length: 4 }, (_, i) => addDays(currentDate, i));
+  }, [currentDate, view]);
 
   const filteredClassrooms = useMemo(() => {
     return classrooms.filter((c) => selectedClassrooms.has(c.id));
@@ -155,7 +150,9 @@ export default function PreviewPage() {
 
   const getBookingStyle = (booking: IBooking) => {
     const startSlotIndex = timeSlots.findIndex((t) => t === booking.startTime);
-    const endSlotIndex = timeSlots.findIndex((t) => t === booking.endTime);
+    // endTime can equal operatingHours.end, which isn't in timeSlots — treat as one past last.
+    const rawEndIndex = timeSlots.findIndex((t) => t === booking.endTime);
+    const endSlotIndex = rawEndIndex === -1 ? timeSlots.length : rawEndIndex;
     const slotCount = endSlotIndex - startSlotIndex;
     const totalSlots = timeSlots.length;
 
@@ -195,9 +192,8 @@ export default function PreviewPage() {
   };
 
   const navigateDate = (direction: "prev" | "next") => {
-    const days = view === "day" ? 1 : 7;
     setCurrentDate((prev) =>
-      direction === "next" ? addDays(prev, days) : addDays(prev, -days)
+      direction === "next" ? addDays(prev, 1) : addDays(prev, -1)
     );
   };
 
@@ -245,25 +241,20 @@ export default function PreviewPage() {
 
           <div className="flex items-center gap-3">
             {/* Date navigation */}
-            {view === "day" ? (
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" onClick={() => navigateDate("prev")}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={goToToday}>
-                  <Calendar className="h-4 w-4 mr-2" />
-                  {format(currentDate, "EEEE, MMM d")}
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => navigateDate("next")}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm font-medium px-3 py-1.5 border rounded-md">
-                <Calendar className="h-4 w-4" />
-                {format(new Date(), "MMM d")} – {format(addDays(new Date(), 3), "MMM d")}
-              </div>
-            )}
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={() => navigateDate("prev")}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={goToToday}>
+                <Calendar className="h-4 w-4 mr-2" />
+                {view === "day"
+                  ? format(currentDate, "EEEE, MMM d")
+                  : `${format(currentDate, "MMM d")} – ${format(addDays(currentDate, 3), "MMM d")}`}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => navigateDate("next")}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
 
             {/* Refresh */}
             <Button variant="ghost" size="sm" onClick={loadBookings}>

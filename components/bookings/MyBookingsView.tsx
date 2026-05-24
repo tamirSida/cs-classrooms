@@ -16,15 +16,17 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBookings, useClassrooms } from "@/hooks";
-import { IBooking, BookingStatus, getClassroomColor } from "@/lib/models";
+import { IBooking, IClassroom, ISettings, BookingStatus, getClassroomColor } from "@/lib/models";
+import { settingsService } from "@/lib/services";
 import { cn } from "@/lib/utils";
-import { Calendar, Table2, Trash2, ChevronLeft, ChevronRight, Clock, MapPin } from "lucide-react";
+import { Calendar, Table2, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, MapPin } from "lucide-react";
+import { BookingModal } from "@/components/calendar/BookingModal";
 
 type ViewMode = "table" | "calendar";
 
 export function MyBookingsView() {
   const { user } = useAuth();
-  const { bookings, loading, fetchUserBookings, cancelBooking } = useBookings();
+  const { bookings, loading, fetchUserBookings, cancelBooking, modifyBooking } = useBookings();
   const { classrooms, fetchClassrooms } = useClassrooms();
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
@@ -32,11 +34,18 @@ export function MyBookingsView() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<IBooking | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<IBooking | null>(null);
+  const [settings, setSettings] = useState<ISettings | null>(null);
 
   useEffect(() => {
     fetchUserBookings();
     fetchClassrooms();
   }, [fetchUserBookings, fetchClassrooms]);
+
+  useEffect(() => {
+    if (!user) return;
+    settingsService.getSettings(user.id).then(setSettings).catch(() => setSettings(null));
+  }, [user]);
 
   const classroomMap = useMemo(() => {
     const map = new Map<string, { name: string; color: string }>();
@@ -183,6 +192,7 @@ export function MyBookingsView() {
                     booking={booking}
                     classroomInfo={classroomMap.get(booking.classroomId)}
                     onCancel={() => handleCancelClick(booking)}
+                    onEdit={() => setEditingBooking(booking)}
                     canCancel={canCancel(booking)}
                   />
                 ))}
@@ -282,7 +292,7 @@ export function MyBookingsView() {
                             classroom?.color || "bg-primary",
                             "text-white"
                           )}
-                          onClick={() => !isPast && canCancel(booking) && handleCancelClick(booking)}
+                          onClick={() => !isPast && canCancel(booking) && setEditingBooking(booking)}
                           title={`${classroom?.name || "Unknown"}: ${booking.startTime} - ${booking.endTime}`}
                         >
                           <div className="font-medium truncate">
@@ -343,6 +353,39 @@ export function MyBookingsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit booking modal */}
+      {settings && (
+        <BookingModal
+          isOpen={!!editingBooking}
+          onClose={() => setEditingBooking(null)}
+          booking={editingBooking}
+          classroom={
+            editingBooking
+              ? (classrooms.find((c: IClassroom) => c.id === editingBooking.classroomId) as IClassroom | undefined)
+              : undefined
+          }
+          operatingHours={settings.operatingHours}
+          onSave={async (data) => {
+            if (!editingBooking) return { success: false, error: "No booking selected" };
+            const result = await modifyBooking(editingBooking.id, data);
+            if (result.success) {
+              setEditingBooking(null);
+              fetchUserBookings();
+            }
+            return result;
+          }}
+          onCancel={async () => {
+            if (!editingBooking) return { success: false, error: "No booking selected" };
+            const result = await cancelBooking(editingBooking.id);
+            if (result.success) {
+              setEditingBooking(null);
+              fetchUserBookings();
+            }
+            return result;
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -351,13 +394,18 @@ interface BookingCardProps {
   booking: IBooking;
   classroomInfo?: { name: string; color: string };
   onCancel?: () => void;
+  onEdit?: () => void;
   canCancel?: boolean;
   isPast?: boolean;
 }
 
-function BookingCard({ booking, classroomInfo, onCancel, canCancel, isPast }: BookingCardProps) {
+function BookingCard({ booking, classroomInfo, onCancel, onEdit, canCancel, isPast }: BookingCardProps) {
+  const isEditable = !isPast && canCancel && !!onEdit;
   return (
-    <Card>
+    <Card
+      className={cn(isEditable && "cursor-pointer hover:bg-muted/40 transition-colors")}
+      onClick={() => isEditable && onEdit?.()}
+    >
       <CardContent className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className={cn("w-2 h-12 rounded-full", classroomInfo?.color || "bg-primary")} />
@@ -382,10 +430,29 @@ function BookingCard({ booking, classroomInfo, onCancel, canCancel, isPast }: Bo
             </div>
           </div>
         </div>
-        {!isPast && canCancel && onCancel && (
-          <Button variant="ghost" size="sm" onClick={onCancel}>
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
+        {!isPast && canCancel && (
+          <div className="flex items-center gap-1">
+            {onEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                title="Edit booking"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {onCancel && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); onCancel(); }}
+                title="Cancel booking"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

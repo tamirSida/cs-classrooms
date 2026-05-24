@@ -113,17 +113,20 @@ export function useBookings() {
       setLoading(true);
       setError(null);
       try {
-        const result = await bookingService.modifyBooking(bookingId, updates, user);
-        if (result.error) {
-          setError(result.error);
-          return { success: false, error: result.error };
+        const response = await fetch(`/api/bookings/${bookingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...updates, requesterId: user.id }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const errorMsg = data?.message || "Failed to modify booking";
+          setError(errorMsg);
+          return { success: false, error: errorMsg };
         }
-        if (result.booking) {
-          setBookings((prev) =>
-            prev.map((b) => (b.id === bookingId ? result.booking! : b))
-          );
-        }
-        return { success: true, booking: result.booking };
+        const updated = data as IBooking;
+        setBookings((prev) => prev.map((b) => (b.id === bookingId ? updated : b)));
+        return { success: true, booking: updated };
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Failed to modify booking";
         setError(errorMsg);
@@ -144,10 +147,19 @@ export function useBookings() {
       setLoading(true);
       setError(null);
       try {
-        const result = await bookingService.cancelBooking(bookingId, user);
-        if (result.error) {
-          setError(result.error);
-          return { success: false, error: result.error };
+        const response = await fetch(`/api/bookings/${bookingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: BookingStatus.CANCELLED,
+            requesterId: user.id,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const errorMsg = data?.message || "Failed to cancel booking";
+          setError(errorMsg);
+          return { success: false, error: errorMsg };
         }
         setBookings((prev) =>
           prev.map((b) =>
