@@ -82,10 +82,7 @@ export function BookingModal({
       return;
     }
 
-    const startIndex = timeSlots.indexOf(startTime);
-    const endIndex = timeSlots.indexOf(endTime);
-
-    if (startIndex >= endIndex) {
+    if (startTime >= endTime) {
       setError("End time must be after start time");
       return;
     }

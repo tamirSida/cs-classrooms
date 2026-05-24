@@ -114,12 +114,12 @@ export function CalendarView() {
     startTime: string;
     endTime: string;
   }) => {
-    if (!selectedClassroomId || selectedClassroomId === "all" || !user) {
-      return { success: false, error: "Please select a classroom to create a booking" };
-    }
-
     if (selectedBooking) {
       return modifyBooking(selectedBooking.id, data);
+    }
+
+    if (!selectedClassroomId || selectedClassroomId === "all" || !user) {
+      return { success: false, error: "Please select a classroom to create a booking" };
     }
 
     return createBooking({

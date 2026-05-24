@@ -7,7 +7,8 @@
       "Bash(git fetch *)",
       "Bash(git pull *)",
       "Bash(git stash *)",
-      "Bash(grep -E \"\\\\.\\(ts|tsx|js|jsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|tsx|js|jsx\\)$\")",
+      "Bash(grep -r \"manage your classroom\" /Users/tamirsida/dev/cs_class --include=\"*.tsx\" --include=\"*.ts\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/dist/*\")"
     ]
   }
 }

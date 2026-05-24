@@ -18,6 +18,9 @@ import { useAuth } from "@/contexts/AuthContext";
 const USER_COLOR = { bg: "bg-primary", text: "text-primary-foreground", border: "border-primary", light: "bg-primary/20" };
 const PENDING_COLOR = { bg: "bg-yellow-500", text: "text-yellow-950", border: "border-yellow-600", light: "bg-yellow-100" };
 
+// 15-min slot row height. Keep in sync with the `h-6` classes on time labels and slot cells.
+const SLOT_HEIGHT_PX = 24;
+
 interface TimeGridProps {
   currentDate: Date;
   view: "day" | "week";
@@ -93,8 +96,8 @@ export function TimeGrid({
     const slotCount = endSlotIndex - startSlotIndex;
 
     return {
-      top: `${startSlotIndex * 48}px`,
-      height: `${slotCount * 48 - 2}px`,
+      top: `${startSlotIndex * SLOT_HEIGHT_PX}px`,
+      height: `${slotCount * SLOT_HEIGHT_PX - 2}px`,
     };
   };
 
@@ -197,7 +200,7 @@ export function TimeGrid({
   // Render the side-by-side classroom view for "all classrooms"
   if (isAllClassroomsView) {
     return (
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1">
         <div
           ref={gridRef}
           className="min-w-[800px]"
@@ -252,14 +255,14 @@ export function TimeGrid({
                     </div>
                   </div>
                   {/* Classroom sub-headers */}
-                  <div className="grid" style={{ gridTemplateColumns: `repeat(${classrooms.length}, 1fr)` }}>
+                  <div className="grid" style={{ gridTemplateColumns: `repeat(${classrooms.length}, minmax(60px, 1fr))` }}>
                     {classrooms.map((classroom) => {
                       const color = classroomColorMap.get(classroom.id) || getClassroomColor(classroom.color, 0);
                       return (
                         <div
                           key={classroom.id}
                           className={cn(
-                            "p-1 text-center text-[10px] font-medium border-r last:border-r-0 truncate",
+                            "p-1 text-center text-[11px] font-medium border-r last:border-r-0 break-words leading-tight min-h-[2.2rem] flex items-center justify-center",
                             color.light
                           )}
                           title={classroom.name}
@@ -282,11 +285,11 @@ export function TimeGrid({
             }}
           >
             {/* Time labels */}
-            <div className="border-r">
+            <div className="sticky left-0 z-10 border-r bg-background">
               {timeSlots.map((time, index) => (
                 <div
                   key={time}
-                  className="h-12 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
+                  className="h-6 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
                 >
                   {index % 4 === 0 && (
                     <span className="-mt-1">{time}</span>
@@ -307,7 +310,7 @@ export function TimeGrid({
                   "border-r grid",
                   isToday(day) && "bg-primary/5"
                 )}
-                style={{ gridTemplateColumns: `repeat(${classrooms.length}, 1fr)` }}
+                style={{ gridTemplateColumns: `repeat(${classrooms.length}, minmax(60px, 1fr))` }}
               >
                 {classrooms.map((classroom, idx) => {
                   const dayBookings = getBookingsForDayAndClassroom(day, classroom.id);
@@ -326,7 +329,7 @@ export function TimeGrid({
                           <div
                             key={time}
                             className={cn(
-                              "h-12 border-b transition-colors",
+                              "h-6 border-b transition-colors",
                               isPast && "bg-muted/50",
                               idx % 2 === 1 && "bg-muted/20",
                               canInteract ? "cursor-pointer hover:bg-primary/10" : "cursor-default",
@@ -382,7 +385,7 @@ export function TimeGrid({
 
   // Single classroom view (original layout with fixes)
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1">
       <div
         ref={gridRef}
         className="min-w-[300px]"
@@ -428,11 +431,11 @@ export function TimeGrid({
           }}
         >
           {/* Time labels */}
-          <div className="border-r">
+          <div className="sticky left-0 z-10 border-r bg-background">
             {timeSlots.map((time, index) => (
               <div
                 key={time}
-                className="h-12 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
+                className="h-6 border-b text-xs text-muted-foreground pr-2 text-right flex items-start justify-end"
               >
                 {index % 4 === 0 && (
                   <span className="-mt-1">{time}</span>
@@ -468,7 +471,7 @@ export function TimeGrid({
                     <div
                       key={time}
                       className={cn(
-                        "h-12 border-b transition-colors",
+                        "h-6 border-b transition-colors",
                         isPast && "bg-muted/50",
                         canInteract ? "cursor-pointer hover:bg-primary/10" : "cursor-default",
                         isInDragRange && "bg-primary/20"
