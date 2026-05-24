@@ -14,12 +14,14 @@ import {
   ClipboardCheck,
   ChevronsLeft,
   ChevronsRight,
+  Map,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { UserRole } from "@/lib/models";
 import { useState } from "react";
+import { RoomMapModal } from "./RoomMapModal";
 
 interface NavItem {
   label: string;
@@ -74,6 +76,7 @@ export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) 
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   const filteredNavItems = navItems.filter((item) => {
     if (!item.roles) return true;
@@ -135,6 +138,19 @@ export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) 
             </Link>
           );
         })}
+
+        <button
+          type="button"
+          onClick={() => { setShowMap(true); setMobileOpen(false); }}
+          title={isCollapsed ? "Room Map" : undefined}
+          className={cn(
+            "w-full flex items-center rounded-lg transition-colors hover:bg-muted",
+            isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2"
+          )}
+        >
+          <Map className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Room Map</span>}
+        </button>
       </nav>
 
       <div className={cn("border-t", isCollapsed ? "p-2" : "p-4")}>
@@ -190,6 +206,8 @@ export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) 
       >
         <NavContent isCollapsed={collapsed} />
       </aside>
+
+      <RoomMapModal isOpen={showMap} onClose={() => setShowMap(false)} />
     </>
   );
 }

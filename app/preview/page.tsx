@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Monitor, Calendar, RefreshCw, ChevronLeft, ChevronRight, Settings2, X } from "lucide-react";
+import { Monitor, Calendar, RefreshCw, ChevronLeft, ChevronRight, Settings2, X, Map as MapIcon } from "lucide-react";
 
 // Classroom colors
 const CLASSROOM_COLORS = [
@@ -44,6 +44,7 @@ export default function PreviewPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showQr, setShowQr] = useState(true);
+  const [showMap, setShowMap] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
   // Load all data from API
@@ -272,6 +273,16 @@ export default function PreviewPage() {
               </span>
             </Button>
 
+            {/* Map toggle */}
+            <Button
+              variant={showMap ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setShowMap((v) => !v)}
+            >
+              <MapIcon className="h-4 w-4 mr-2" />
+              {showMap ? "Schedule" : "Map"}
+            </Button>
+
             {/* Settings toggle */}
             <Button
               variant={showSettings ? "secondary" : "ghost"}
@@ -357,20 +368,32 @@ export default function PreviewPage() {
       </div>
 
       {/* Color legend */}
-      <div className="px-4 py-2 bg-muted/30 border-b flex flex-wrap gap-4">
-        {filteredClassrooms.map((classroom, index) => {
-          const color = classroomColorMap.get(classroom.id)!;
-          return (
-            <div key={classroom.id} className="flex items-center gap-1.5">
-              <div className={cn("w-3 h-3 rounded", color.bg)} />
-              <span className="text-xs font-medium">{classroom.name}</span>
-            </div>
-          );
-        })}
-      </div>
+      {!showMap && (
+        <div className="px-4 py-2 bg-muted/30 border-b flex flex-wrap gap-4">
+          {filteredClassrooms.map((classroom, index) => {
+            const color = classroomColorMap.get(classroom.id)!;
+            return (
+              <div key={classroom.id} className="flex items-center gap-1.5">
+                <div className={cn("w-3 h-3 rounded", color.bg)} />
+                <span className="text-xs font-medium">{classroom.name}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Calendar grid */}
+      {/* Main content: calendar grid or map */}
       <div className="flex-1 overflow-hidden p-4 relative">
+        {showMap ? (
+          <div className="h-full flex items-center justify-center">
+            <img
+              src="/map.jpeg"
+              alt="Classroom map"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+            />
+          </div>
+        ) : (
+          <>
         {/* QR Code overlay */}
         {showQr && qrCodeUrl && (
           <div className="absolute bottom-4 right-4 z-20 bg-white p-2 rounded-lg shadow-lg">
@@ -530,6 +553,8 @@ export default function PreviewPage() {
               ))}
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
 
