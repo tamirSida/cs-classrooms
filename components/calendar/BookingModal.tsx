@@ -39,6 +39,7 @@ interface BookingModalProps {
     endTime: string;
   }) => Promise<{ success: boolean; error?: string }>;
   onCancel?: () => Promise<{ success: boolean; error?: string }>;
+  canOverride?: boolean; // True if the current user may edit/cancel bookings they don't own.
 }
 
 export function BookingModal({
@@ -52,6 +53,7 @@ export function BookingModal({
   operatingHours,
   onSave,
   onCancel,
+  canOverride = false,
 }: BookingModalProps) {
   const { user } = useAuth();
   const [startTime, setStartTime] = useState(selectedStartTime || "");
@@ -119,8 +121,8 @@ export function BookingModal({
     }
   };
 
-  const isViewMode = booking && booking.userId !== user?.id;
-  const isOwnBooking = booking && booking.userId === user?.id;
+  const canManage = !!booking && (booking.userId === user?.id || canOverride);
+  const isViewMode = !!booking && !canManage;
 
   const getStatusBadge = (status: BookingStatus) => {
     switch (status) {
@@ -244,7 +246,7 @@ export function BookingModal({
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          {isOwnBooking && booking?.status !== BookingStatus.CANCELLED && (
+          {canManage && booking?.status !== BookingStatus.CANCELLED && (
             <Button
               variant="destructive"
               onClick={handleCancel}

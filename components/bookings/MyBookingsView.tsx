@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBookings, useClassrooms } from "@/hooks";
-import { IBooking, IClassroom, ISettings, BookingStatus, getClassroomColor } from "@/lib/models";
+import { IBooking, IClassroom, ISettings, UserRole, BookingStatus, getClassroomColor } from "@/lib/models";
 import { settingsService } from "@/lib/services";
 import { cn } from "@/lib/utils";
 import { Calendar, Table2, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, MapPin } from "lucide-react";
@@ -384,6 +384,12 @@ export function MyBookingsView() {
             }
             return result;
           }}
+          canOverride={
+            !!user && (
+              user.role === UserRole.SUPER_ADMIN ||
+              (user.role === UserRole.ADMIN && !!settings.adminCanOverrideBookings)
+            )
+          }
         />
       )}
     </div>

@@ -50,6 +50,7 @@ export default function SettingsPage() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [restrictSignupDomain, setRestrictSignupDomain] = useState(true);
   const [allowedDomainsInput, setAllowedDomainsInput] = useState("runi.ac.il");
+  const [adminCanOverrideBookings, setAdminCanOverrideBookings] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -73,6 +74,7 @@ export default function SettingsPage() {
       setSignupCode(data.signupCode || "");
       setRestrictSignupDomain(data.restrictSignupDomain ?? true);
       setAllowedDomainsInput((data.allowedSignupDomains ?? ["runi.ac.il"]).join(", "));
+      setAdminCanOverrideBookings(data.adminCanOverrideBookings ?? false);
       setLoading(false);
     };
 
@@ -134,6 +136,7 @@ export default function SettingsPage() {
             .split(",")
             .map((d) => d.trim().toLowerCase())
             .filter(Boolean),
+          adminCanOverrideBookings,
         },
         user.id
       );
@@ -411,6 +414,30 @@ export default function SettingsPage() {
                 </p>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Admin Permissions</CardTitle>
+            <CardDescription>
+              Control what admins can do beyond their own bookings. Super-admins always have full access.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="adminCanOverrideBookings">Allow admins to override bookings</Label>
+                <p className="text-xs text-muted-foreground">
+                  When on, admins can edit or cancel any user&apos;s booking. Super-admins can always override.
+                </p>
+              </div>
+              <Switch
+                id="adminCanOverrideBookings"
+                checked={adminCanOverrideBookings}
+                onCheckedChange={setAdminCanOverrideBookings}
+              />
+            </div>
           </CardContent>
         </Card>
 

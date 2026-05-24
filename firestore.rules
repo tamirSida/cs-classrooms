@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ────────────────────────────────────────────────────
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() {
+      return isAuthed() && userDoc().role == 'super_admin';
+    }
+
+    // True when an update changes the `role` field.
+    function roleChanged() {
+      return request.resource.data.role != resource.data.role;
+    }
+
+    // ─── users ──────────────────────────────────────────────────────
+    // Reads open to any authed user. Creates/deletes only via admin SDK
+    // (API routes). Updates open EXCEPT changing `role`, which must be
+    // performed by a super_admin.
+    match /users/{uid} {
+      allow read: if isAuthed();
+      allow create, delete: if false;
+      allow update: if isAuthed() && (!roleChanged() || isSuperAdmin());
+    }
+
+    // ─── classrooms ─────────────────────────────────────────────────
+    // Reads + updates open. Create/delete go through API routes.
+    match /classrooms/{id} {
+      allow read: if isAuthed();
+      allow create, delete: if false;
+      allow update: if isAuthed();
+    }
+
+    // ─── bookings ───────────────────────────────────────────────────
+    // Reads open. Approve/reject still use client SDK, so update is open.
+    // Create + delete go via API routes.
+    match /bookings/{id} {
+      allow read: if isAuthed();
+      allow create, delete: if false;
+      allow update: if isAuthed();
+    }
+
+    // ─── settings ───────────────────────────────────────────────────
+    // /settings page reads + writes via client SDK. Create only if the
+    // doc doesn't already exist (matches getOrCreateGlobalSettings).
+    match /settings/{id} {
+      allow read: if isAuthed();
+      allow create: if isAuthed() && !exists(/databases/$(database)/documents/settings/$(id));
+      allow update: if isAuthed();
+      allow delete: if false;
+    }
+
+    // ─── invitations ────────────────────────────────────────────────
+    // Tokens are sensitive; client never touches them. API-only.
+    match /invitations/{token} {
+      allow read, write: if false;
+    }
+  }
+}

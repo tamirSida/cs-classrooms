@@ -14,6 +14,7 @@ export interface ISettings {
   signupCode?: string; // Code for QR-based student self-signup
   restrictSignupDomain: boolean; // Restrict QR/link signup to allowedSignupDomains
   allowedSignupDomains: string[]; // Matches the domain and its subdomains
+  adminCanOverrideBookings: boolean; // Admins may modify/cancel any booking when true. Super-admins always can.
   updatedAt: Timestamp;
   updatedBy: string;
 }
@@ -26,6 +27,7 @@ export interface ISettingsUpdate {
   signupCode?: string;
   restrictSignupDomain?: boolean;
   allowedSignupDomains?: string[];
+  adminCanOverrideBookings?: boolean;
 }
 
 export class Settings implements ISettings {
@@ -37,6 +39,7 @@ export class Settings implements ISettings {
     public requiresApproval: boolean,
     public restrictSignupDomain: boolean,
     public allowedSignupDomains: string[],
+    public adminCanOverrideBookings: boolean,
     public updatedAt: Timestamp,
     public updatedBy: string,
     public signupCode?: string
@@ -55,6 +58,7 @@ export class Settings implements ISettings {
       data.requiresApproval ?? false,
       data.restrictSignupDomain ?? true,
       data.allowedSignupDomains ?? Settings.DEFAULT_ALLOWED_DOMAINS,
+      data.adminCanOverrideBookings ?? false,
       data.updatedAt,
       data.updatedBy,
       data.signupCode
@@ -72,6 +76,7 @@ export class Settings implements ISettings {
       requiresApproval: false,
       restrictSignupDomain: true,
       allowedSignupDomains: [...Settings.DEFAULT_ALLOWED_DOMAINS],
+      adminCanOverrideBookings: false,
       updatedAt: Timestamp.now(),
       updatedBy: userId,
     };
@@ -86,6 +91,7 @@ export class Settings implements ISettings {
       signupCode: this.signupCode,
       restrictSignupDomain: this.restrictSignupDomain,
       allowedSignupDomains: this.allowedSignupDomains,
+      adminCanOverrideBookings: this.adminCanOverrideBookings,
       updatedAt: this.updatedAt,
       updatedBy: this.updatedBy,
     };

@@ -6,7 +6,7 @@ import { CalendarHeader } from "./CalendarHeader";
 import { TimeGrid } from "./TimeGrid";
 import { BookingModal } from "./BookingModal";
 import { FindClassroomModal } from "./FindClassroomModal";
-import { IBooking, IClassroom, ISettings } from "@/lib/models";
+import { IBooking, IClassroom, ISettings, UserRole } from "@/lib/models";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBookings, useClassrooms } from "@/hooks";
 import { settingsService } from "@/lib/services";
@@ -209,6 +209,12 @@ export function CalendarView() {
         operatingHours={settings.operatingHours}
         onSave={handleSaveBooking}
         onCancel={handleCancelBooking}
+        canOverride={
+          !!user && (
+            user.role === UserRole.SUPER_ADMIN ||
+            (user.role === UserRole.ADMIN && !!settings.adminCanOverrideBookings)
+          )
+        }
       />
 
       <FindClassroomModal

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { Collections } from "@/lib/firebase";
-import { BookingStatus, IBooking, UserRole } from "@/lib/models";
+import { BookingStatus, IBooking, UserRole, Settings } from "@/lib/models";
 import { Resend } from "resend";
 import {
   bookingModifiedTemplate,
@@ -112,10 +112,21 @@ export async function PATCH(
       return NextResponse.json({ message: "Requester not found" }, { status: 401 });
     }
     const requesterRole = requesterDoc.data()?.role as UserRole;
-    const isAdmin = requesterRole === UserRole.ADMIN || requesterRole === UserRole.SUPER_ADMIN;
+    const isSuperAdmin = requesterRole === UserRole.SUPER_ADMIN;
+    const isAdmin = requesterRole === UserRole.ADMIN;
     const isOwner = existing.userId === requesterId;
 
-    if (!isOwner && !isAdmin) {
+    // Super-admins always override. Admins override only if the settings toggle is on.
+    let canOverride = isSuperAdmin;
+    if (!canOverride && isAdmin) {
+      const settingsDoc = await db
+        .collection(Collections.SETTINGS)
+        .doc(Settings.DOCUMENT_ID)
+        .get();
+      canOverride = settingsDoc.exists && settingsDoc.data()?.adminCanOverrideBookings === true;
+    }
+
+    if (!isOwner && !canOverride) {
       return NextResponse.json(
         { message: "Not authorized to modify this booking" },
         { status: 403 }
@@ -166,7 +177,7 @@ export async function PATCH(
 
     let change: BookingChange = { kind: "none" };
     if (isCancelling) {
-      change = { kind: "cancelled", byAdmin: isAdmin && !isOwner };
+      change = { kind: "cancelled", byAdmin: canOverride && !isOwner };
     } else if (timeChanged) {
       change = {
         kind: "modified",
