@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -47,6 +48,8 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [restrictSignupDomain, setRestrictSignupDomain] = useState(true);
+  const [allowedDomainsInput, setAllowedDomainsInput] = useState("runi.ac.il");
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -68,6 +71,8 @@ export default function SettingsPage() {
       }
 
       setSignupCode(data.signupCode || "");
+      setRestrictSignupDomain(data.restrictSignupDomain ?? true);
+      setAllowedDomainsInput((data.allowedSignupDomains ?? ["runi.ac.il"]).join(", "));
       setLoading(false);
     };
 
@@ -124,6 +129,11 @@ export default function SettingsPage() {
           defaultMaxTimePerDay: maxTime,
           timeSlotDuration,
           signupCode: signupCode || undefined,
+          restrictSignupDomain,
+          allowedSignupDomains: allowedDomainsInput
+            .split(",")
+            .map((d) => d.trim().toLowerCase())
+            .filter(Boolean),
         },
         user.id
       );
@@ -361,6 +371,45 @@ export default function SettingsPage() {
                   </div>
                 )}
               </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Signup Restrictions</CardTitle>
+            <CardDescription>
+              Limits the QR/link signup to specific email domains. Admin-created users and email invitations are not affected.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="restrictSignupDomain">Restrict QR signup to allowed domains</Label>
+                <p className="text-xs text-muted-foreground">
+                  When on, only emails matching the domains below can sign up via QR/link.
+                </p>
+              </div>
+              <Switch
+                id="restrictSignupDomain"
+                checked={restrictSignupDomain}
+                onCheckedChange={setRestrictSignupDomain}
+              />
+            </div>
+
+            {restrictSignupDomain && (
+              <div className="space-y-2">
+                <Label htmlFor="allowedDomains">Allowed Domains</Label>
+                <Input
+                  id="allowedDomains"
+                  value={allowedDomainsInput}
+                  onChange={(e) => setAllowedDomainsInput(e.target.value)}
+                  placeholder="runi.ac.il, example.edu"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated. Emails from these domains and their subdomains are allowed (e.g., <code>runi.ac.il</code> also matches <code>cs.runi.ac.il</code>).
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>

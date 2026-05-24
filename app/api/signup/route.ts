@@ -41,6 +41,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Enforce domain restriction for QR/link signup (admin-create + invite bypass this)
+    const settingsData = settingsDoc.data() ?? {};
+    const restrict = settingsData.restrictSignupDomain ?? true;
+    const allowed: string[] = settingsData.allowedSignupDomains ?? ["runi.ac.il"];
+
+    if (restrict && allowed.length > 0) {
+      const emailDomain = email.toLowerCase().split("@")[1] ?? "";
+      const ok = allowed.some(
+        (d: string) => {
+          const dl = d.toLowerCase();
+          return emailDomain === dl || emailDomain.endsWith("." + dl);
+        }
+      );
+      if (!ok) {
+        return NextResponse.json(
+          { error: `Signup is restricted to ${allowed.join(", ")} email addresses` },
+          { status: 403 }
+        );
+      }
+    }
+
     // Validate password strength
     if (password.length < 6) {
       return NextResponse.json(

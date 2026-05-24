@@ -12,6 +12,8 @@ export interface ISettings {
   timeSlotDuration: number; // Minutes (5, 10, 15, 30, 60)
   requiresApproval: boolean; // Global setting - student bookings need admin approval
   signupCode?: string; // Code for QR-based student self-signup
+  restrictSignupDomain: boolean; // Restrict QR/link signup to allowedSignupDomains
+  allowedSignupDomains: string[]; // Matches the domain and its subdomains
   updatedAt: Timestamp;
   updatedBy: string;
 }
@@ -22,6 +24,8 @@ export interface ISettingsUpdate {
   timeSlotDuration?: number;
   requiresApproval?: boolean;
   signupCode?: string;
+  restrictSignupDomain?: boolean;
+  allowedSignupDomains?: string[];
 }
 
 export class Settings implements ISettings {
@@ -31,6 +35,8 @@ export class Settings implements ISettings {
     public defaultMaxTimePerDay: number,
     public timeSlotDuration: number,
     public requiresApproval: boolean,
+    public restrictSignupDomain: boolean,
+    public allowedSignupDomains: string[],
     public updatedAt: Timestamp,
     public updatedBy: string,
     public signupCode?: string
@@ -38,6 +44,7 @@ export class Settings implements ISettings {
 
   static readonly DOCUMENT_ID = "global";
   static readonly DEFAULT_SLOT_DURATION = 15;
+  static readonly DEFAULT_ALLOWED_DOMAINS: string[] = ["runi.ac.il"];
 
   static fromFirestore(data: ISettings): Settings {
     return new Settings(
@@ -46,6 +53,8 @@ export class Settings implements ISettings {
       data.defaultMaxTimePerDay,
       data.timeSlotDuration,
       data.requiresApproval ?? false,
+      data.restrictSignupDomain ?? true,
+      data.allowedSignupDomains ?? Settings.DEFAULT_ALLOWED_DOMAINS,
       data.updatedAt,
       data.updatedBy,
       data.signupCode
@@ -61,6 +70,8 @@ export class Settings implements ISettings {
       defaultMaxTimePerDay: 60,
       timeSlotDuration: 15,
       requiresApproval: false,
+      restrictSignupDomain: true,
+      allowedSignupDomains: [...Settings.DEFAULT_ALLOWED_DOMAINS],
       updatedAt: Timestamp.now(),
       updatedBy: userId,
     };
@@ -73,6 +84,8 @@ export class Settings implements ISettings {
       timeSlotDuration: this.timeSlotDuration,
       requiresApproval: this.requiresApproval,
       signupCode: this.signupCode,
+      restrictSignupDomain: this.restrictSignupDomain,
+      allowedSignupDomains: this.allowedSignupDomains,
       updatedAt: this.updatedAt,
       updatedBy: this.updatedBy,
     };
