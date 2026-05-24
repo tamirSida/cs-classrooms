@@ -12,6 +12,8 @@ import {
   Menu,
   X,
   ClipboardCheck,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -63,7 +65,12 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+}
+
+export function Sidebar({ collapsed = false, onToggleCollapsed }: SidebarProps) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -77,18 +84,34 @@ export function Sidebar() {
     await signOut();
   };
 
-  const NavContent = () => (
+  // `isCollapsed` only applies to the desktop sidebar — mobile always renders full width.
+  const NavContent = ({ isCollapsed = false }: { isCollapsed?: boolean }) => (
     <>
-      <div className="p-4 border-b">
-        <h1 className="text-xl font-bold">ClassScheduler</h1>
-        {user && (
-          <p className="text-sm text-muted-foreground mt-1 truncate">
-            {user.displayName}
-          </p>
+      <div className={cn("border-b flex items-center gap-2", isCollapsed ? "p-2 justify-center" : "p-4 justify-between")}>
+        {!isCollapsed && (
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold truncate">ClassScheduler</h1>
+            {user && (
+              <p className="text-sm text-muted-foreground mt-1 truncate">
+                {user.displayName}
+              </p>
+            )}
+          </div>
+        )}
+        {onToggleCollapsed && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:inline-flex shrink-0"
+            onClick={onToggleCollapsed}
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isCollapsed ? <ChevronsRight className="h-5 w-5" /> : <ChevronsLeft className="h-5 w-5" />}
+          </Button>
         )}
       </div>
 
-      <nav className="flex-1 p-4 space-y-2">
+      <nav className={cn("flex-1 space-y-2", isCollapsed ? "p-2" : "p-4")}>
         {filteredNavItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -98,28 +121,31 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
+              title={isCollapsed ? item.label : undefined}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
+                "flex items-center rounded-lg transition-colors",
+                isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
               )}
             >
-              <Icon className="h-5 w-5" />
-              <span>{item.label}</span>
+              <Icon className="h-5 w-5 shrink-0" />
+              {!isCollapsed && <span>{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t">
+      <div className={cn("border-t", isCollapsed ? "p-2" : "p-4")}>
         <Button
           variant="ghost"
-          className="w-full justify-start gap-3"
+          className={cn("w-full", isCollapsed ? "justify-center px-0" : "justify-start gap-3")}
           onClick={handleSignOut}
+          title={isCollapsed ? "Sign Out" : undefined}
         >
-          <LogOut className="h-5 w-5" />
-          <span>Sign Out</span>
+          <LogOut className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>Sign Out</span>}
         </Button>
       </div>
     </>
@@ -156,8 +182,13 @@ export function Sidebar() {
       </aside>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-background border-r">
-        <NavContent />
+      <aside
+        className={cn(
+          "hidden md:flex md:flex-col md:fixed md:inset-y-0 bg-background border-r transition-[width] duration-200 ease-in-out",
+          collapsed ? "md:w-16" : "md:w-64"
+        )}
+      >
+        <NavContent isCollapsed={collapsed} />
       </aside>
     </>
   );

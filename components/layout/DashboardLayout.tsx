@@ -1,20 +1,37 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
   title?: string;
 }
 
+const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
+
 export function DashboardLayout({ children, title }: DashboardLayoutProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    if (stored === "true") setCollapsed(true);
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -58,8 +75,8 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Sidebar />
-      <div className="md:pl-64">
+      <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
+      <div className={cn("transition-[padding] duration-200 ease-in-out", collapsed ? "md:pl-16" : "md:pl-64")}>
         <Header title={title} />
         <main className="p-4 md:p-6">{children}</main>
       </div>
