@@ -1,229 +1,98 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
-import { Collections } from "@/lib/firebase";
-import { BookingStatus, IBooking, UserRole, Settings } from "@/lib/models";
-import { Resend } from "resend";
-import {
-  bookingModifiedTemplate,
-  bookingCancelledByUserTemplate,
-  bookingCancelledByAdminTemplate,
-  BookingEmailData,
-  BookingModifiedData,
-} from "@/lib/email";
+import { adminDb } from "@/lib/firebase/admin";
+import { Collections } from "@/lib/firebase/collections";
+import { BookingStatus, IBooking } from "@/lib/models";
+import { conflictingDates, validateSlotBasics } from "@/lib/bookings";
+import { hasStarted, isValidDateString, nowInCampus } from "@/lib/time";
+import { requireUser } from "@/lib/server/auth";
+import { HttpError, readJson, withErrors } from "@/lib/server/http";
+import { getServerSettings } from "@/lib/server/settings";
+import { canOverrideBookings, loadActiveBookings } from "@/lib/server/bookingRules";
+import { sendBookingEmail } from "@/lib/server/bookingEmails";
 
-type BookingChange =
-  | { kind: "modified"; oldDate: string; oldStartTime: string; oldEndTime: string }
-  | { kind: "cancelled"; byAdmin: boolean }
-  | { kind: "none" };
-
-async function sendBookingChangeEmail(
-  booking: IBooking,
-  classroomName: string,
-  change: BookingChange
-): Promise<void> {
-  if (change.kind === "none") return;
-
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn("[API/bookings/:id] RESEND_API_KEY not configured, skipping email");
-    return;
-  }
-
-  const resend = new Resend(apiKey);
-  const fromEmail = process.env.RESEND_FROM_EMAIL || "room@efi-arazi.com";
-  const fromName = process.env.RESEND_FROM_NAME || "ClassScheduler";
-
-  const baseData: BookingEmailData = {
-    userName: booking.userName,
-    userEmail: booking.userEmail,
-    classroomName,
-    date: booking.date,
-    startTime: booking.startTime,
-    endTime: booking.endTime,
-  };
-
-  let html: string;
-  let subject: string;
-
-  if (change.kind === "modified") {
-    const modifiedData: BookingModifiedData = {
-      ...baseData,
-      oldDate: change.oldDate,
-      oldStartTime: change.oldStartTime,
-      oldEndTime: change.oldEndTime,
-    };
-    html = bookingModifiedTemplate(modifiedData);
-    subject = `Booking Modified - ${classroomName}`;
-  } else {
-    html = change.byAdmin
-      ? bookingCancelledByAdminTemplate(baseData)
-      : bookingCancelledByUserTemplate(baseData);
-    subject = `Booking Cancelled - ${classroomName}`;
-  }
-
-  try {
-    console.log(`[API/bookings/:id] Sending ${change.kind} email to: ${booking.userEmail}`);
-    const { data, error } = await resend.emails.send({
-      from: `${fromName} <${fromEmail}>`,
-      to: booking.userEmail,
-      subject,
-      html,
-    });
-    if (error) {
-      console.error("[API/bookings/:id] Resend error:", error);
-      return;
-    }
-    console.log(`[API/bookings/:id] Email sent! ID: ${data?.id}`);
-  } catch (error) {
-    console.error("[API/bookings/:id] Failed to send email:", error);
-  }
+interface UpdateBookingBody {
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  status?: string;
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const { date, startTime, endTime, status, requesterId } = body;
+type RouteContext = { params: Promise<{ id: string }> };
 
-    if (!requesterId) {
-      return NextResponse.json(
-        { message: "requesterId is required" },
-        { status: 400 }
-      );
-    }
+const STARTED_MESSAGE = "This date has already started and can't be changed";
 
-    const db = adminDb();
-    const docRef = db.collection(Collections.BOOKINGS).doc(id);
-    const existingDoc = await docRef.get();
+// PATCH /api/bookings/:id - edit times or cancel. Approval goes through /api/bookings/review.
+export const PATCH = withErrors("API/bookings/:id PATCH", async (request: NextRequest, { params }: RouteContext) => {
+  const user = await requireUser(request);
+  const { id } = await params;
+  const body = await readJson<UpdateBookingBody>(request);
 
-    if (!existingDoc.exists) {
-      return NextResponse.json({ message: "Booking not found" }, { status: 404 });
-    }
+  if (body.status !== undefined && body.status !== BookingStatus.CANCELLED) {
+    throw new HttpError(400, "Bookings can only be cancelled here. Approvals are handled on the Approvals page.");
+  }
 
-    const existing = { id: existingDoc.id, ...existingDoc.data() } as IBooking;
+  const db = adminDb();
+  const docRef = db.collection(Collections.BOOKINGS).doc(id);
+  const snap = await docRef.get();
+  if (!snap.exists) throw new HttpError(404, "Booking not found");
+  const existing = { id: snap.id, ...snap.data() } as IBooking;
 
-    // Look up requester role for authorization
-    const requesterDoc = await db.collection(Collections.USERS).doc(requesterId).get();
-    if (!requesterDoc.exists) {
-      return NextResponse.json({ message: "Requester not found" }, { status: 401 });
-    }
-    const requesterRole = requesterDoc.data()?.role as UserRole;
-    const isSuperAdmin = requesterRole === UserRole.SUPER_ADMIN;
-    const isAdmin = requesterRole === UserRole.ADMIN;
-    const isOwner = existing.userId === requesterId;
+  const settings = await getServerSettings(db);
+  const isOwner = existing.userId === user.id;
+  const canOverride = canOverrideBookings(user, settings);
+  if (!isOwner && !canOverride) throw new HttpError(403, "Not authorized to modify this booking");
 
-    // Super-admins always override. Admins override only if the settings toggle is on.
-    let canOverride = isSuperAdmin;
-    if (!canOverride && isAdmin) {
-      const settingsDoc = await db
-        .collection(Collections.SETTINGS)
-        .doc(Settings.DOCUMENT_ID)
-        .get();
-      canOverride = settingsDoc.exists && settingsDoc.data()?.adminCanOverrideBookings === true;
-    }
+  if (existing.status === BookingStatus.CANCELLED) {
+    throw new HttpError(400, "This booking is already cancelled");
+  }
 
-    if (!isOwner && !canOverride) {
-      return NextResponse.json(
-        { message: "Not authorized to modify this booking" },
-        { status: 403 }
-      );
-    }
+  const now = nowInCampus();
+  if (existing.seriesId && hasStarted(existing, now)) throw new HttpError(409, STARTED_MESSAGE);
 
-    if (existing.status === BookingStatus.CANCELLED && status !== BookingStatus.CANCELLED) {
-      return NextResponse.json(
-        { message: "Cannot modify a cancelled booking" },
-        { status: 400 }
-      );
-    }
+  const classroomSnap = await db.collection(Collections.CLASSROOMS).doc(existing.classroomId).get();
+  const classroomName = (classroomSnap.data()?.name as string) || "Classroom";
 
-    // Determine the change kind for email routing
-    const isCancelling = status === BookingStatus.CANCELLED && existing.status !== BookingStatus.CANCELLED;
-    const timeChanged =
-      (date && date !== existing.date) ||
-      (startTime && startTime !== existing.startTime) ||
-      (endTime && endTime !== existing.endTime);
-
-    const updateData: Record<string, unknown> = {
+  if (body.status === BookingStatus.CANCELLED) {
+    await docRef.update({
+      status: BookingStatus.CANCELLED,
+      cancelledAt: Timestamp.now(),
+      cancelledBy: user.id,
       updatedAt: Timestamp.now(),
-    };
-
-    if (date) updateData.date = date;
-    if (startTime) updateData.startTime = startTime;
-    if (endTime) updateData.endTime = endTime;
-    if (status) {
-      updateData.status = status;
-      if (status === BookingStatus.CANCELLED) {
-        updateData.cancelledAt = Timestamp.now();
-        updateData.cancelledBy = requesterId;
-      }
-    }
-
-    await docRef.update(updateData);
-    const updatedDoc = await docRef.get();
-    const updated = { id: updatedDoc.id, ...updatedDoc.data() } as IBooking;
-
-    // Look up classroom for the email
-    const classroomDoc = await db
-      .collection(Collections.CLASSROOMS)
-      .doc(updated.classroomId)
-      .get();
-    const classroomName = classroomDoc.exists
-      ? (classroomDoc.data()?.name as string) || "Classroom"
-      : "Classroom";
-
-    let change: BookingChange = { kind: "none" };
-    if (isCancelling) {
-      change = { kind: "cancelled", byAdmin: canOverride && !isOwner };
-    } else if (timeChanged) {
-      change = {
-        kind: "modified",
-        oldDate: existing.date,
-        oldStartTime: existing.startTime,
-        oldEndTime: existing.endTime,
-      };
-    }
-
-    await sendBookingChangeEmail(updated, classroomName, change);
-
+    });
+    const updated = { ...existing, status: BookingStatus.CANCELLED };
+    await sendBookingEmail(updated, classroomName, { kind: isOwner ? "cancelledByUser" : "cancelledByAdmin" });
     return NextResponse.json(updated);
-  } catch (error) {
-    console.error("Error updating booking:", error);
-    return NextResponse.json(
-      { message: "Failed to update booking" },
-      { status: 500 }
-    );
   }
-}
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const db = adminDb();
-    const docRef = db.collection(Collections.BOOKINGS).doc(id);
-    const doc = await docRef.get();
+  const next = {
+    date: body.date ?? existing.date,
+    startTime: body.startTime ?? existing.startTime,
+    endTime: body.endTime ?? existing.endTime,
+  };
+  const timeChanged =
+    next.date !== existing.date || next.startTime !== existing.startTime || next.endTime !== existing.endTime;
+  if (!timeChanged) return NextResponse.json(existing);
 
-    if (!doc.exists) {
-      return NextResponse.json(
-        { message: "Booking not found" },
-        { status: 404 }
-      );
+  if (!isValidDateString(next.date)) throw new HttpError(400, "Invalid date");
+  const slotError = validateSlotBasics(settings.operatingHours, next.startTime, next.endTime);
+  if (slotError) throw new HttpError(400, slotError);
+  if (existing.seriesId && hasStarted(next, now)) throw new HttpError(409, "A series date can't be moved into the past");
+
+  await db.runTransaction(async (tx) => {
+    const active = await loadActiveBookings(db, next.date, next.date, tx);
+    if (conflictingDates(active, existing.classroomId, [next], new Set([id])).size > 0) {
+      throw new HttpError(409, "Time slot is already booked");
     }
+    tx.update(docRef, { ...next, updatedAt: Timestamp.now() });
+  });
 
-    await docRef.delete();
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error deleting booking:", error);
-    return NextResponse.json(
-      { message: "Failed to delete booking" },
-      { status: 500 }
-    );
-  }
-}
+  const updated = { ...existing, ...next };
+  await sendBookingEmail(updated, classroomName, {
+    kind: "modified",
+    oldDate: existing.date,
+    oldStartTime: existing.startTime,
+    oldEndTime: existing.endTime,
+  });
+  return NextResponse.json(updated);
+});

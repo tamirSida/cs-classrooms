@@ -33,3 +33,15 @@ export async function requireUser(request: Request, roles?: UserRole[]): Promise
 export function isAdminRole(role: UserRole): boolean {
   return ADMIN_ROLES.includes(role);
 }
+
+// For routes with their own try/catch: returns the user, or a ready error response.
+export async function authorize(request: Request, roles?: UserRole[]): Promise<IUser | Response> {
+  try {
+    return await requireUser(request, roles);
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return Response.json({ message: error.message, error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
+}

@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { UserRole, IBulkInviteResult } from "@/lib/models";
+import { authedFetch } from "@/lib/utils";
 
 interface BulkInviteModalProps {
   onClose: () => void;
@@ -98,9 +99,8 @@ export function BulkInviteModal({ onClose, onSuccess }: BulkInviteModalProps) {
     setError("");
 
     try {
-      const response = await fetch("/api/invite", {
+      const response = await authedFetch("/api/invite", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           invitations: validInvites.map((i) => ({
             email: i.email,

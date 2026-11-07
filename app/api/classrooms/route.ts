@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { Collections } from "@/lib/firebase";
+import { ADMIN_ROLES, authorize } from "@/lib/server/auth";
 
 export async function POST(request: NextRequest) {
+  const caller = await authorize(request, ADMIN_ROLES);
+  if (caller instanceof Response) return caller;
   try {
     const body = await request.json();
     const { name, description, config, assignedAdmins = [] } = body;
@@ -41,7 +44,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const caller = await authorize(request, ADMIN_ROLES);
+  if (caller instanceof Response) return caller;
   try {
     const db = adminDb();
     const snapshot = await db.collection(Collections.CLASSROOMS).get();

@@ -6,6 +6,7 @@ import { Collections } from "@/lib/firebase";
 import { UserRole, IInvitation, IBulkInviteResult, IValidateInvitationResponse } from "@/lib/models";
 import { Resend } from "resend";
 import { invitationEmailTemplate, invitationEmailText } from "@/lib/email";
+import { authorize } from "@/lib/server/auth";
 
 const DEFAULT_EXPIRY_DAYS = 7;
 
@@ -21,6 +22,9 @@ function getExpiryDate(days: number): Date {
 
 // POST - Create invitation(s) and send email(s)
 export async function POST(request: NextRequest) {
+  const caller = await authorize(request, [UserRole.SUPER_ADMIN]);
+  if (caller instanceof Response) return caller;
+
   try {
     const body = await request.json();
     const { invitations } = body as { invitations: Array<{ email: string; name: string; role: UserRole }> };
@@ -110,7 +114,7 @@ export async function POST(request: NextRequest) {
           role,
           expiresAt: Timestamp.fromDate(expiresAt) as any,
           createdAt: Timestamp.now() as any,
-          createdBy: "admin",
+          createdBy: caller.id,
           used: false,
         };
 

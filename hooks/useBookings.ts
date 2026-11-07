@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { IBooking, IBookingCreate, IBookingUpdate, BookingStatus } from "@/lib/models";
 import { bookingService } from "@/lib/services";
 import { useAuth } from "@/contexts/AuthContext";
+import { authedFetch } from "@/lib/utils";
 
 export function useBookings() {
   const { user } = useAuth();
@@ -78,9 +79,8 @@ export function useBookings() {
       setError(null);
       try {
         // Use API route for booking creation (server-side email sending)
-        const response = await fetch("/api/bookings", {
+        const response = await authedFetch("/api/bookings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         });
 
@@ -113,10 +113,9 @@ export function useBookings() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/bookings/${bookingId}`, {
+        const response = await authedFetch(`/api/bookings/${bookingId}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...updates, requesterId: user.id }),
+          body: JSON.stringify(updates),
         });
         const data = await response.json();
         if (!response.ok) {
@@ -147,13 +146,9 @@ export function useBookings() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/bookings/${bookingId}`, {
+        const response = await authedFetch(`/api/bookings/${bookingId}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            status: BookingStatus.CANCELLED,
-            requesterId: user.id,
-          }),
+          body: JSON.stringify({ status: BookingStatus.CANCELLED }),
         });
         const data = await response.json();
         if (!response.ok) {
