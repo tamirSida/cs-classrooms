@@ -12,6 +12,16 @@ class FirebaseAdmin {
   private initialize(): void {
     if (this.initialized) return;
 
+    if (process.env.FIRESTORE_EMULATOR_HOST) {
+      this.app =
+        getApps()[0] ??
+        initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
+      this._auth = getAuth(this.app);
+      this._firestore = getFirestore(this.app);
+      this.initialized = true;
+      return;
+    }
+
     const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
     if (!serviceAccountKey) {
