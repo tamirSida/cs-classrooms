@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { IBooking, IBookingCreate, IBookingUpdate, BookingStatus } from "@/lib/models";
 import { bookingService } from "@/lib/services";
 import { useAuth } from "@/contexts/AuthContext";
-import { authedFetch } from "@/lib/utils";
+import { authedFetch, readApiResult } from "@/lib/utils";
 
 export function useBookings() {
   const { user } = useAuth();
@@ -188,66 +188,41 @@ export function useBookings() {
     }
   }, []);
 
-  const approveBooking = useCallback(
-    async (bookingId: string) => {
+  const review = useCallback(
+    async (target: { bookingId?: string; seriesId?: string }, decision: "approve" | "reject") => {
       if (!user) {
         return { success: false, error: "Not authenticated" };
       }
 
-      setLoading(true);
       setError(null);
       try {
-        const result = await bookingService.approveBooking(bookingId, user.id);
-        if (result.error) {
+        const response = await authedFetch("/api/bookings/review", {
+          method: "POST",
+          body: JSON.stringify({ ...target, decision }),
+        });
+        const result = await readApiResult<{ reviewed: string[] }>(response, `Failed to ${decision} booking`);
+        if (!result.ok) {
           setError(result.error);
           return { success: false, error: result.error };
         }
-        setBookings((prev) =>
-          prev.map((b) =>
-            b.id === bookingId ? { ...b, status: BookingStatus.CONFIRMED } : b
-          )
-        );
+        const reviewed = new Set(result.data.reviewed);
+        const status = decision === "approve" ? BookingStatus.CONFIRMED : BookingStatus.CANCELLED;
+        setBookings((prev) => prev.map((b) => (reviewed.has(b.id) ? { ...b, status } : b)));
         return { success: true };
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "Failed to approve booking";
+        const errorMsg = err instanceof Error ? err.message : `Failed to ${decision} booking`;
         setError(errorMsg);
         return { success: false, error: errorMsg };
-      } finally {
-        setLoading(false);
       }
     },
     [user]
   );
 
-  const rejectBooking = useCallback(
-    async (bookingId: string) => {
-      if (!user) {
-        return { success: false, error: "Not authenticated" };
-      }
-
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await bookingService.rejectBooking(bookingId, user.id);
-        if (result.error) {
-          setError(result.error);
-          return { success: false, error: result.error };
-        }
-        setBookings((prev) =>
-          prev.map((b) =>
-            b.id === bookingId ? { ...b, status: BookingStatus.CANCELLED } : b
-          )
-        );
-        return { success: true };
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "Failed to reject booking";
-        setError(errorMsg);
-        return { success: false, error: errorMsg };
-      } finally {
-        setLoading(false);
-      }
-    },
-    [user]
+  const approveBooking = useCallback((bookingId: string) => review({ bookingId }, "approve"), [review]);
+  const rejectBooking = useCallback((bookingId: string) => review({ bookingId }, "reject"), [review]);
+  const reviewSeries = useCallback(
+    (seriesId: string, decision: "approve" | "reject") => review({ seriesId }, decision),
+    [review]
   );
 
   return {
@@ -263,6 +238,7 @@ export function useBookings() {
     cancelBooking,
     approveBooking,
     rejectBooking,
+    reviewSeries,
     clearError: () => setError(null),
   };
 }

@@ -15,6 +15,7 @@ export interface ISettings {
   restrictSignupDomain: boolean; // Restrict QR/link signup to allowedSignupDomains
   allowedSignupDomains: string[]; // Matches the domain and its subdomains
   adminCanOverrideBookings: boolean; // Admins may modify/cancel any booking when true. Super-admins always can.
+  allowRecurringForAllUsers: boolean; // Non-admin users may create recurring bookings when true. Admins always can.
   updatedAt: Timestamp;
   updatedBy: string;
 }
@@ -28,6 +29,7 @@ export interface ISettingsUpdate {
   restrictSignupDomain?: boolean;
   allowedSignupDomains?: string[];
   adminCanOverrideBookings?: boolean;
+  allowRecurringForAllUsers?: boolean;
 }
 
 export class Settings implements ISettings {
@@ -40,6 +42,7 @@ export class Settings implements ISettings {
     public restrictSignupDomain: boolean,
     public allowedSignupDomains: string[],
     public adminCanOverrideBookings: boolean,
+    public allowRecurringForAllUsers: boolean,
     public updatedAt: Timestamp,
     public updatedBy: string,
     public signupCode?: string
@@ -59,6 +62,7 @@ export class Settings implements ISettings {
       data.restrictSignupDomain ?? true,
       data.allowedSignupDomains ?? Settings.DEFAULT_ALLOWED_DOMAINS,
       data.adminCanOverrideBookings ?? false,
+      data.allowRecurringForAllUsers ?? false,
       data.updatedAt,
       data.updatedBy,
       data.signupCode
@@ -77,6 +81,7 @@ export class Settings implements ISettings {
       restrictSignupDomain: true,
       allowedSignupDomains: [...Settings.DEFAULT_ALLOWED_DOMAINS],
       adminCanOverrideBookings: false,
+      allowRecurringForAllUsers: false,
       updatedAt: Timestamp.now(),
       updatedBy: userId,
     };
@@ -92,6 +97,7 @@ export class Settings implements ISettings {
       restrictSignupDomain: this.restrictSignupDomain,
       allowedSignupDomains: this.allowedSignupDomains,
       adminCanOverrideBookings: this.adminCanOverrideBookings,
+      allowRecurringForAllUsers: this.allowRecurringForAllUsers,
       updatedAt: this.updatedAt,
       updatedBy: this.updatedBy,
     };
