@@ -1,16 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import {
-  format,
-  addDays,
-  isToday,
-  parse,
-  isBefore,
-} from "date-fns";
+import { useState, useEffect, useMemo } from "react";
+import { format, addDays, parse } from "date-fns";
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
-import { IBooking, IClassroom, ISettings, TimeSlotFactory } from "@/lib/models";
+import { TimeSlotFactory } from "@/lib/models";
+import { hasStarted } from "@/lib/time";
+import { PreviewBooking, PreviewView, usePreviewData } from "@/hooks/usePreviewData";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -31,70 +27,37 @@ const CLASSROOM_COLORS = [
 ];
 
 export default function PreviewPage() {
-  const [loading, setLoading] = useState(true);
-  const [bookings, setBookings] = useState<IBooking[]>([]);
-  const [classrooms, setClassrooms] = useState<IClassroom[]>([]);
-  const [settings, setSettings] = useState<ISettings | null>(null);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [qr, setQr] = useState<{ code: string; url: string } | null>(null);
 
   // Display settings
-  const [view, setView] = useState<"day" | "week">("week");
-  const [selectedClassrooms, setSelectedClassrooms] = useState<Set<string>>(new Set());
+  const [view, setView] = useState<PreviewView>("week");
+  // null until the viewer changes the filter: then all classrooms (including new ones) show.
+  const [selection, setSelection] = useState<Set<string> | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showQr, setShowQr] = useState(true);
   const [showMap, setShowMap] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  // Load all data from API
-  const loadData = useCallback(async () => {
-    const start = format(currentDate, "yyyy-MM-dd");
-    const end = view === "day"
-      ? format(currentDate, "yyyy-MM-dd")
-      : format(addDays(currentDate, 3), "yyyy-MM-dd");
+  const {
+    classrooms,
+    settings,
+    bookings,
+    loading,
+    stale,
+    lastSuccessAt,
+    campusNow,
+    anchor,
+    navigate,
+    goToToday,
+    refresh,
+  } = usePreviewData(view, autoRefresh);
 
-    try {
-      const response = await fetch(`/api/preview?startDate=${start}&endDate=${end}`);
-      if (!response.ok) throw new Error("Failed to fetch data");
-
-      const data = await response.json();
-
-      setClassrooms(data.classrooms);
-      setSettings(data.settings);
-      setBookings(data.bookings);
-
-      // On first load, select all classrooms
-      if (selectedClassrooms.size === 0 && data.classrooms.length > 0) {
-        setSelectedClassrooms(new Set(data.classrooms.map((c: IClassroom) => c.id)));
-      }
-
-      setLastRefresh(new Date());
-    } catch (error) {
-      console.error("Failed to load data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentDate, view, selectedClassrooms.size]);
-
-  // Initial load
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // Alias for refresh button
-  const loadBookings = loadData;
-
-  // Auto-refresh every 60 seconds
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const interval = setInterval(() => {
-      loadBookings();
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, loadBookings]);
+  const currentDate = useMemo(() => parse(anchor, "yyyy-MM-dd", new Date()), [anchor]);
+  const selectedClassrooms = useMemo(
+    () => selection ?? new Set(classrooms.map((c) => c.id)),
+    [selection, classrooms]
+  );
+  const isCampusToday = (day: Date) => format(day, "yyyy-MM-dd") === campusNow.date;
 
   const timeSlots = useMemo(() => {
     if (!settings) return [];
@@ -106,20 +69,19 @@ export default function PreviewPage() {
   }, [settings]);
 
   // Generate QR code for signup page
+  const signupCode = settings?.signupCode;
   useEffect(() => {
-    if (!settings?.signupCode) {
-      setQrCodeUrl(null);
-      return;
-    }
+    if (!signupCode) return;
 
-    const signupUrl = `${window.location.origin}/join/${settings.signupCode}`;
+    const signupUrl = `${window.location.origin}/join/${signupCode}`;
 
     QRCode.toDataURL(signupUrl, {
       width: 120,
       margin: 1,
       color: { dark: "#000000", light: "#ffffff" },
-    }).then(setQrCodeUrl).catch(console.error);
-  }, [settings?.signupCode]);
+    }).then((url) => setQr({ code: signupCode, url })).catch(console.error);
+  }, [signupCode]);
+  const qrCodeUrl = signupCode && qr?.code === signupCode ? qr.url : null;
 
 
   const days = useMemo(() => {
@@ -148,7 +110,7 @@ export default function PreviewPage() {
     );
   };
 
-  const getBookingStyle = (booking: IBooking) => {
+  const getBookingStyle = (booking: PreviewBooking) => {
     const startSlotIndex = timeSlots.findIndex((t) => t === booking.startTime);
     // endTime can equal operatingHours.end, which isn't in timeSlots — treat as one past last.
     const rawEndIndex = timeSlots.findIndex((t) => t === booking.endTime);
@@ -162,14 +124,12 @@ export default function PreviewPage() {
     };
   };
 
-  const isSlotInPast = (date: Date, time: string) => {
-    const slotDateTime = parse(time, "HH:mm", date);
-    return isBefore(slotDateTime, new Date());
-  };
+  const isSlotInPast = (date: Date, time: string) =>
+    hasStarted({ date: format(date, "yyyy-MM-dd"), startTime: time }, campusNow);
 
   const toggleClassroom = (classroomId: string) => {
-    setSelectedClassrooms((prev) => {
-      const next = new Set(prev);
+    setSelection(() => {
+      const next = new Set(selectedClassrooms);
       if (next.has(classroomId)) {
         next.delete(classroomId);
       } else {
@@ -180,22 +140,14 @@ export default function PreviewPage() {
   };
 
   const selectAllClassrooms = () => {
-    setSelectedClassrooms(new Set(classrooms.map((c) => c.id)));
+    setSelection(null);
   };
 
   const deselectAllClassrooms = () => {
-    setSelectedClassrooms(new Set());
+    setSelection(new Set());
   };
 
-  const goToToday = () => {
-    setCurrentDate(new Date());
-  };
-
-  const navigateDate = (direction: "prev" | "next") => {
-    setCurrentDate((prev) =>
-      direction === "next" ? addDays(prev, 1) : addDays(prev, -1)
-    );
-  };
+  const navigateDate = (direction: "prev" | "next") => navigate(direction === "next" ? 1 : -1);
 
   if (loading) {
     return (
@@ -257,10 +209,16 @@ export default function PreviewPage() {
             </div>
 
             {/* Refresh */}
-            <Button variant="ghost" size="sm" onClick={loadBookings}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              <span className="text-xs text-muted-foreground">
-                {format(lastRefresh, "HH:mm")}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={refresh}
+              title={stale ? "Can't reach the server. Retrying automatically." : "Refresh now"}
+            >
+              <RefreshCw className={cn("h-4 w-4 mr-2", stale && "text-destructive")} />
+              <span className={cn("text-xs", stale ? "text-destructive" : "text-muted-foreground")}>
+                {lastSuccessAt ? format(lastSuccessAt, "HH:mm") : "--:--"}
+                {stale && ", reconnecting"}
               </span>
             </Button>
 
@@ -417,7 +375,7 @@ export default function PreviewPage() {
                   key={day.toISOString()}
                   className={cn(
                     "border-r",
-                    isToday(day) && "bg-primary/5"
+                    isCampusToday(day) && "bg-primary/5"
                   )}
                 >
                   <div className="p-2 text-center border-b">
@@ -427,7 +385,7 @@ export default function PreviewPage() {
                     <div
                       className={cn(
                         "text-lg font-semibold",
-                        isToday(day) && "text-primary"
+                        isCampusToday(day) && "text-primary"
                       )}
                     >
                       {format(day, "d")}
@@ -489,7 +447,7 @@ export default function PreviewPage() {
                   key={day.toISOString()}
                   className={cn(
                     "border-r grid",
-                    isToday(day) && "bg-primary/5"
+                    isCampusToday(day) && "bg-primary/5"
                   )}
                   style={{ gridTemplateColumns: `repeat(${filteredClassrooms.length}, 1fr)` }}
                 >
@@ -552,7 +510,9 @@ export default function PreviewPage() {
       {/* Footer with current time */}
       <div className="sticky bottom-0 bg-background border-t px-4 py-2 flex items-center justify-between text-sm text-muted-foreground">
         <span>Public Preview - Read Only</span>
-        <span>{format(new Date(), "EEEE, MMMM d, yyyy · HH:mm")}</span>
+        <span>
+          {format(parse(campusNow.date, "yyyy-MM-dd", new Date()), "EEEE, MMMM d, yyyy")} · {campusNow.time}
+        </span>
       </div>
     </div>
   );

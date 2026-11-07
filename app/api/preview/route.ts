@@ -3,6 +3,10 @@ import { adminDb } from "@/lib/firebase/admin";
 import { Collections } from "@/lib/firebase";
 import { BookingStatus, Settings } from "@/lib/models";
 
+export const dynamic = "force-dynamic";
+
+const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
+
 // GET /api/preview - Public endpoint for preview display.
 // Uses the admin SDK (unauthenticated callers can't pass Firestore rules),
 // so responses are projected to only the fields the public page needs.
@@ -51,12 +55,12 @@ export async function GET(request: NextRequest) {
         return { id: doc.id, classroomId, userName, date, startTime, endTime, status };
       });
 
-    return NextResponse.json({ classrooms, settings, bookings });
+    return NextResponse.json({ classrooms, settings, bookings }, { headers: NO_STORE });
   } catch (error) {
     console.error("Preview API error:", error);
     return NextResponse.json(
       { error: "Failed to fetch preview data" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE }
     );
   }
 }
