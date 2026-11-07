@@ -81,7 +81,8 @@ export function usePreviewData(view: PreviewView, autoRefresh: boolean) {
         setLastFailureAt(null);
       } catch (error) {
         if (sequence === sequenceRef.current) {
-          console.error("[preview] refresh failed:", error);
+          // warn, not error: an offline display is expected to retry quietly
+          console.warn("[preview] refresh failed:", error);
           setLastFailureAt(Date.now());
         }
       } finally {

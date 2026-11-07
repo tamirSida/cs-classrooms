@@ -138,6 +138,7 @@ export function BookingModal({
   const seriesStarted = !!booking?.seriesId && hasStarted(booking, nowInCampus());
 
   const toggleRepeat = (on: boolean) => {
+    setError(null);
     setRepeatOn(on);
     if (on && !repeat) setRepeat(defaultRepeatSettings(startDate));
   };
@@ -303,7 +304,13 @@ export function BookingModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Start Time</Label>
-                    <Select value={startTime} onValueChange={setStartTime}>
+                    <Select
+                      value={startTime}
+                      onValueChange={(v) => {
+                        setError(null);
+                        setStartTime(v);
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
@@ -318,7 +325,13 @@ export function BookingModal({
                   </div>
                   <div className="space-y-2">
                     <Label>End Time</Label>
-                    <Select value={endTime} onValueChange={setEndTime}>
+                    <Select
+                      value={endTime}
+                      onValueChange={(v) => {
+                        setError(null);
+                        setEndTime(v);
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
@@ -355,7 +368,10 @@ export function BookingModal({
                         <RepeatSection
                           startDate={startDate}
                           value={repeat}
-                          onChange={setRepeat}
+                          onChange={(next) => {
+                            setError(null);
+                            setRepeat(next);
+                          }}
                           firstDate={entries[0]?.date}
                         />
                         {preview.error && (

@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:tz": "TZ=UTC vitest run && TZ=Asia/Jerusalem vitest run && TZ=America/New_York vitest run",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-cs-classrooms \"vitest run --config vitest.rules.config.ts\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-cs-classrooms \"vitest run --config vitest.rules.config.ts\"",
+    "emulators": "firebase emulators:start --only auth,firestore --project demo-cs-classrooms",
+    "seed:emulator": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 tsx scripts/seed-emulator.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.3.1",
