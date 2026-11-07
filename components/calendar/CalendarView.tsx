@@ -23,6 +23,8 @@ export function CalendarView() {
   const [settings, setSettings] = useState<ISettings | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
+  // New key per opening, so the booking form never shows state from a previous one.
+  const [modalSession, setModalSession] = useState(0);
   const [findModalOpen, setFindModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<IBooking | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -44,13 +46,19 @@ export function CalendarView() {
 
   const loadSettings = useCallback(async () => {
     if (!user) return;
-    const s = await settingsService.getSettings(user.id);
-    setSettings(s);
+    try {
+      setSettings(await settingsService.getSettings(user.id));
+    } catch (error) {
+      console.error("Failed to refresh settings:", error);
+    }
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    settingsService.getSettings(user.id).then(setSettings);
+    settingsService
+      .getSettings(user.id)
+      .then(setSettings)
+      .catch((error) => console.error("Failed to load settings:", error));
   }, [user]);
 
   // Load classrooms
@@ -97,6 +105,7 @@ export function CalendarView() {
       setSelectedDate(date);
       setSelectedStartTime(startTime);
       setSelectedEndTime(endTime);
+      setModalSession((n) => n + 1);
       setModalOpen(true);
       // Pick up permission changes (e.g. the recurring switch) without a reload.
       loadSettings();
@@ -109,6 +118,7 @@ export function CalendarView() {
     setSelectedDate(null);
     setSelectedStartTime("");
     setSelectedEndTime("");
+    setModalSession((n) => n + 1);
     setModalOpen(true);
   }, []);
 
@@ -161,6 +171,7 @@ export function CalendarView() {
     setSelectedStartTime(startTime);
     setSelectedEndTime(endTime);
     setCurrentDate(date);
+    setModalSession((n) => n + 1);
     setModalOpen(true);
   };
 
@@ -215,6 +226,7 @@ export function CalendarView() {
       </div>
 
       <BookingModal
+        key={modalSession}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         booking={selectedBooking}

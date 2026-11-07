@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { Collections } from "@/lib/firebase/collections";
-import { BookingStatus, IBooking } from "@/lib/models";
+import { BookingStatus } from "@/lib/models";
 import { conflictingDates, validateSlotBasics } from "@/lib/bookings";
 import { hasStarted, isValidDateString, nowInCampus } from "@/lib/time";
 import { requireUser } from "@/lib/server/auth";
 import { HttpError, readJson, withErrors } from "@/lib/server/http";
 import { getServerSettings } from "@/lib/server/settings";
-import { canOverrideBookings, loadActiveBookings } from "@/lib/server/bookingRules";
+import {
+  assertCanBookClassroom,
+  canOverrideBookings,
+  loadActiveBookings,
+  loadClassroom,
+} from "@/lib/server/bookingRules";
+import { bookingFromDoc, classroomName } from "@/lib/server/seriesStore";
 import { sendBookingEmail } from "@/lib/server/bookingEmails";
 
 interface UpdateBookingBody {
@@ -34,65 +40,79 @@ export const PATCH = withErrors("API/bookings/:id PATCH", async (request: NextRe
 
   const db = adminDb();
   const docRef = db.collection(Collections.BOOKINGS).doc(id);
-  const snap = await docRef.get();
-  if (!snap.exists) throw new HttpError(404, "Booking not found");
-  const existing = { id: snap.id, ...snap.data() } as IBooking;
-
   const settings = await getServerSettings(db);
-  const isOwner = existing.userId === user.id;
   const canOverride = canOverrideBookings(user, settings);
-  if (!isOwner && !canOverride) throw new HttpError(403, "Not authorized to modify this booking");
-
-  if (existing.status === BookingStatus.CANCELLED) {
-    throw new HttpError(400, "This booking is already cancelled");
-  }
-
   const now = nowInCampus();
-  if (existing.seriesId && hasStarted(existing, now)) throw new HttpError(409, STARTED_MESSAGE);
 
-  const classroomSnap = await db.collection(Collections.CLASSROOMS).doc(existing.classroomId).get();
-  const classroomName = (classroomSnap.data()?.name as string) || "Classroom";
+  // Every check runs on a snapshot read inside the transaction, so a concurrent
+  // approve/reject/cancel cannot be overwritten.
+  const outcome = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+    if (!snap.exists) throw new HttpError(404, "Booking not found");
+    const existing = bookingFromDoc(snap);
 
-  if (body.status === BookingStatus.CANCELLED) {
-    await docRef.update({
-      status: BookingStatus.CANCELLED,
-      cancelledAt: Timestamp.now(),
-      cancelledBy: user.id,
-      updatedAt: Timestamp.now(),
-    });
-    const updated = { ...existing, status: BookingStatus.CANCELLED };
-    await sendBookingEmail(updated, classroomName, { kind: isOwner ? "cancelledByUser" : "cancelledByAdmin" });
-    return NextResponse.json(updated);
-  }
+    const isOwner = existing.userId === user.id;
+    if (!isOwner && !canOverride) throw new HttpError(403, "Not authorized to modify this booking");
 
-  const next = {
-    date: body.date ?? existing.date,
-    startTime: body.startTime ?? existing.startTime,
-    endTime: body.endTime ?? existing.endTime,
-  };
-  const timeChanged =
-    next.date !== existing.date || next.startTime !== existing.startTime || next.endTime !== existing.endTime;
-  if (!timeChanged) return NextResponse.json(existing);
+    if (existing.status === BookingStatus.CANCELLED) {
+      if (body.status === BookingStatus.CANCELLED) return { kind: "none" as const, booking: existing };
+      throw new HttpError(400, "This booking is already cancelled");
+    }
+    if (existing.seriesId && hasStarted(existing, now)) throw new HttpError(409, STARTED_MESSAGE);
 
-  if (!isValidDateString(next.date)) throw new HttpError(400, "Invalid date");
-  const slotError = validateSlotBasics(settings.operatingHours, next.startTime, next.endTime);
-  if (slotError) throw new HttpError(400, slotError);
-  if (existing.seriesId && hasStarted(next, now)) throw new HttpError(409, "A series date can't be moved into the past");
+    if (body.status === BookingStatus.CANCELLED) {
+      tx.update(docRef, {
+        status: BookingStatus.CANCELLED,
+        cancelledAt: Timestamp.now(),
+        cancelledBy: user.id,
+        updatedAt: Timestamp.now(),
+      });
+      return { kind: "cancelled" as const, booking: { ...existing, status: BookingStatus.CANCELLED }, isOwner };
+    }
 
-  await db.runTransaction(async (tx) => {
+    const next = {
+      date: body.date ?? existing.date,
+      startTime: body.startTime ?? existing.startTime,
+      endTime: body.endTime ?? existing.endTime,
+    };
+    const timesChanged = next.startTime !== existing.startTime || next.endTime !== existing.endTime;
+    if (next.date === existing.date && !timesChanged) return { kind: "none" as const, booking: existing };
+
+    if (!isValidDateString(next.date)) throw new HttpError(400, "Invalid date");
+    if (timesChanged) {
+      const slotError = validateSlotBasics(settings.operatingHours, next.startTime, next.endTime);
+      if (slotError) throw new HttpError(400, slotError);
+    }
+    if (existing.seriesId && hasStarted(next, now)) {
+      throw new HttpError(409, "A series date can't be moved into the past");
+    }
+
+    const classroom = await loadClassroom(db, existing.classroomId, tx);
+    assertCanBookClassroom(user, classroom);
+
     const active = await loadActiveBookings(db, next.date, next.date, tx);
     if (conflictingDates(active, existing.classroomId, [next], new Set([id])).size > 0) {
       throw new HttpError(409, "Time slot is already booked");
     }
     tx.update(docRef, { ...next, updatedAt: Timestamp.now() });
+    return { kind: "modified" as const, booking: { ...existing, ...next }, previous: existing };
   });
 
-  const updated = { ...existing, ...next };
-  await sendBookingEmail(updated, classroomName, {
-    kind: "modified",
-    oldDate: existing.date,
-    oldStartTime: existing.startTime,
-    oldEndTime: existing.endTime,
-  });
-  return NextResponse.json(updated);
+  if (outcome.kind !== "none") {
+    const name = await classroomName(db, outcome.booking.classroomId);
+    await sendBookingEmail(
+      outcome.booking,
+      name,
+      outcome.kind === "cancelled"
+        ? { kind: outcome.isOwner ? "cancelledByUser" : "cancelledByAdmin" }
+        : {
+            kind: "modified",
+            oldDate: outcome.previous.date,
+            oldStartTime: outcome.previous.startTime,
+            oldEndTime: outcome.previous.endTime,
+          }
+    );
+  }
+
+  return NextResponse.json(outcome.booking);
 });

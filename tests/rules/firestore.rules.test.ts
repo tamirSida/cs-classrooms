@@ -95,8 +95,9 @@ describe("settings", () => {
 });
 
 describe("bookings", () => {
-  it("still allows client updates to single bookings", async () => {
-    await assertSucceeds(updateDoc(doc(db("admin"), "bookings/single"), { status: "confirmed" }));
+  it("blocks all client updates to single bookings", async () => {
+    await assertFails(updateDoc(doc(db("student"), "bookings/single"), { status: "confirmed" }));
+    await assertFails(updateDoc(doc(db("super"), "bookings/single"), { status: "confirmed" }));
   });
 
   it("blocks client updates to series bookings, even for super admins", async () => {
@@ -113,6 +114,34 @@ describe("bookingSeries", () => {
   it("is readable but never client-writable", async () => {
     await assertSucceeds(getDoc(doc(db("student"), "bookingSeries/s1")));
     await assertFails(updateDoc(doc(db("super"), "bookingSeries/s1"), { userId: "x" }));
+  });
+});
+
+describe("user profiles", () => {
+  it("lets users change only their own display name", async () => {
+    await assertSucceeds(updateDoc(doc(db("student"), "users/student"), { displayName: "Dana" }));
+    await assertFails(updateDoc(doc(db("student"), "users/student"), { email: "attacker@example.com" }));
+    await assertFails(updateDoc(doc(db("student"), "users/admin"), { displayName: "Hacked" }));
+  });
+
+  it("lets admins change only classroom assignments of others", async () => {
+    await assertSucceeds(updateDoc(doc(db("admin"), "users/admin"), { assignedClassrooms: ["room"] }));
+    await assertFails(updateDoc(doc(db("admin"), "users/student"), { displayName: "Renamed" }));
+  });
+
+  it("lets super admins edit any profile", async () => {
+    await assertSucceeds(updateDoc(doc(db("super"), "users/student"), { displayName: "Renamed", role: "admin" }));
+  });
+});
+
+describe("settings first run", () => {
+  it("blocks first-run settings with custom operating hours", async () => {
+    await assertFails(
+      setDoc(doc(db("student"), "settings/global"), {
+        ...DEFAULT_SETTINGS,
+        operatingHours: { start: "00:00", end: "23:59" },
+      })
+    );
   });
 });
 

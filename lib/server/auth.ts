@@ -14,8 +14,11 @@ export async function requireUser(request: Request, roles?: UserRole[]): Promise
   if (!token) throw new HttpError(401, "Sign in required");
 
   let uid: string;
+  let tokenEmail: string | undefined;
   try {
-    uid = (await adminAuth().verifyIdToken(token)).uid;
+    const decoded = await adminAuth().verifyIdToken(token);
+    uid = decoded.uid;
+    tokenEmail = decoded.email;
   } catch {
     throw new HttpError(401, "Your session has expired. Please sign in again.");
   }
@@ -23,7 +26,9 @@ export async function requireUser(request: Request, roles?: UserRole[]): Promise
   const snap = await adminDb().collection(Collections.USERS).doc(uid).get();
   if (!snap.exists) throw new HttpError(403, "Account not found");
 
+  // Email comes from the verified token: the user document is client-editable data.
   const user = { id: snap.id, ...snap.data() } as IUser;
+  if (tokenEmail) user.email = tokenEmail;
   if (user.isActive === false) throw new HttpError(403, "Your account is deactivated");
   if (roles && !roles.includes(user.role)) throw new HttpError(403, "You don't have permission to do this");
 

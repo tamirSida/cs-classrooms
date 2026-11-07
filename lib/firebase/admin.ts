@@ -12,7 +12,10 @@ class FirebaseAdmin {
   private initialize(): void {
     if (this.initialized) return;
 
-    if (process.env.FIRESTORE_EMULATOR_HOST) {
+    if (process.env.FIRESTORE_EMULATOR_HOST && process.env.NODE_ENV !== "production") {
+      if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+        throw new Error("Set FIREBASE_AUTH_EMULATOR_HOST together with FIRESTORE_EMULATOR_HOST");
+      }
       this.app =
         getApps()[0] ??
         initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });

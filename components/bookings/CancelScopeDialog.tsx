@@ -29,6 +29,7 @@ export function CancelScopeDialog({ booking, open, onOpenChange, onDone }: Cance
   const [loaded, setLoaded] = useState<{ key: string; previews: Previews | null; error: string | null } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<SeriesCancelResult | null>(null);
 
   const seriesId = booking?.seriesId;
   const bookingId = booking?.id;
@@ -61,10 +62,18 @@ export function CancelScopeDialog({ booking, open, onOpenChange, onDone }: Cance
   const previews = current?.previews ?? null;
   const shownError = error ?? current?.error ?? null;
 
+  const reset = () => {
+    setScope("this");
+    setError(null);
+    setLoaded(null);
+    setOutcome(null);
+  };
+
   const handleOpenChange = (next: boolean) => {
     if (!next) {
-      setScope("this");
-      setError(null);
+      // A finished cancel still has to reach the parent so it refreshes.
+      if (outcome) onDone(outcome);
+      reset();
     }
     onOpenChange(next);
   };
@@ -81,9 +90,19 @@ export function CancelScopeDialog({ booking, open, onOpenChange, onDone }: Cance
       setError(result.error);
       return;
     }
-    setScope("this");
-    setError(null);
+    if (result.data.keptStarted.length > 0) {
+      // Stay open so the user sees which dates could not be cancelled.
+      setOutcome(result.data);
+      return;
+    }
+    reset();
     onDone(result.data);
+  };
+
+  const finish = () => {
+    const done = outcome;
+    reset();
+    if (done) onDone(done);
   };
 
   const countLabel = (key: keyof Previews) => (previews ? ` (${previews[key].length})` : "");
@@ -98,6 +117,27 @@ export function CancelScopeDialog({ booking, open, onOpenChange, onDone }: Cance
           </DialogDescription>
         </DialogHeader>
 
+        {outcome ? (
+          <div className="space-y-3 text-sm">
+            <p>
+              {outcome.cancelled.length > 0
+                ? `Cancelled ${outcome.cancelled.length} ${outcome.cancelled.length === 1 ? "booking" : "bookings"}.`
+                : "Nothing was cancelled."}
+            </p>
+            <div className="rounded-md bg-amber-50 p-3 text-amber-800">
+              <p className="font-medium">Kept because they had already started:</p>
+              <ul className="mt-1 list-disc pl-5">
+                {outcome.keptStarted.map((b) => (
+                  <li key={b.id}>{formatDateLabel(b.date)}</li>
+                ))}
+              </ul>
+            </div>
+            <DialogFooter>
+              <Button onClick={finish}>Done</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <>
         <RadioGroup value={scope} onValueChange={(v) => setScope(v as CancelScope)} className="space-y-3">
           <RadioGroupItem value="this" id="cancel-scope-this">
             <span className="text-sm">This booking only ({formatDateLabel(booking.date)})</span>
@@ -138,6 +178,8 @@ export function CancelScopeDialog({ booking, open, onOpenChange, onDone }: Cance
               : `Cancel ${selectedDates.length || ""} ${selectedDates.length === 1 ? "booking" : "bookings"}`.replace("  ", " ")}
           </Button>
         </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -6,6 +6,7 @@ import {
   IUser,
   UserRole,
   Classroom,
+  ClassroomPermission,
 } from "@/lib/models";
 import { classroomRepository, userRepository } from "@/lib/repositories";
 
@@ -99,9 +100,14 @@ export class ClassroomService {
     return this.getActiveClassrooms();
   }
 
+  // Students cannot book "Admins Only" rooms (enforced by the API), so they are not offered.
   async getBookableClassroomsForUser(user: IUser): Promise<IClassroom[]> {
     const classrooms = await this.getClassroomsForUser(user);
-    return classrooms.filter((c) => c.config.isActive);
+    return classrooms.filter(
+      (c) =>
+        c.config.isActive &&
+        (user.role !== UserRole.STUDENT || c.config.permissions !== ClassroomPermission.ADMIN_ONLY)
+    );
   }
 
   async toggleClassroomActive(id: string): Promise<IClassroom | null> {

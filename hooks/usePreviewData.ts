@@ -42,8 +42,9 @@ const WEEK_VIEW_DAYS = 4;
 export function usePreviewData(view: PreviewView, autoRefresh: boolean) {
   const [now, setNow] = useState<{ campus: CampusNow; ms: number }>(() => ({ campus: nowInCampus(), ms: Date.now() }));
   const [anchorState, setAnchorState] = useState(() => ({ anchor: nowInCampus().date, followToday: true }));
-  const [data, setData] = useState<PreviewPayload | null>(null);
+  const [data, setData] = useState<{ range: string; payload: PreviewPayload } | null>(null);
   const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null);
+  const [lastFailureAt, setLastFailureAt] = useState<number | null>(null);
 
   const lastInteractionRef = useRef(0);
   const lastSuccessRef = useRef<number | null>(null);
@@ -53,6 +54,7 @@ export function usePreviewData(view: PreviewView, autoRefresh: boolean) {
 
   const anchor = anchorState.anchor;
   const endDate = view === "day" ? anchor : addDaysToDateString(anchor, WEEK_VIEW_DAYS - 1);
+  const range = `${anchor}..${endDate}`;
 
   const fetchData = useCallback(
     async (force: boolean) => {
@@ -73,11 +75,15 @@ export function usePreviewData(view: PreviewView, autoRefresh: boolean) {
         if (!response.ok) throw new Error(`Preview request failed: ${response.status}`);
         const payload = (await response.json()) as PreviewPayload;
         if (sequence !== sequenceRef.current) return;
-        setData(payload);
+        setData({ range: `${anchor}..${endDate}`, payload });
         lastSuccessRef.current = Date.now();
         setLastSuccessAt(lastSuccessRef.current);
+        setLastFailureAt(null);
       } catch (error) {
-        if (sequence === sequenceRef.current) console.error("[preview] refresh failed:", error);
+        if (sequence === sequenceRef.current) {
+          console.error("[preview] refresh failed:", error);
+          setLastFailureAt(Date.now());
+        }
       } finally {
         clearTimeout(timeout);
         if (sequence === sequenceRef.current) inFlightRef.current = false;
@@ -94,24 +100,30 @@ export function usePreviewData(view: PreviewView, autoRefresh: boolean) {
   useEffect(() => () => controllerRef.current?.abort(), []);
 
   // Clock runs independently of the network so the date still rolls over while offline.
-  useEffect(() => {
-    const tick = () => {
-      const current = { campus: nowInCampus(), ms: Date.now() };
-      setNow(current);
-      setAnchorState((prev) =>
-        nextAnchorDate(
-          { ...prev, lastInteractionAt: lastInteractionRef.current },
-          { campusDate: current.campus.date, ms: current.ms }
-        )
+  const tick = useCallback(() => {
+    const current = { campus: nowInCampus(), ms: Date.now() };
+    setNow(current);
+    setAnchorState((prev) => {
+      const next = nextAnchorDate(
+        { ...prev, lastInteractionAt: lastInteractionRef.current },
+        { campusDate: current.campus.date, ms: current.ms }
       );
-    };
-    const timer = setInterval(tick, CLOCK_TICK_MS);
-    return () => clearInterval(timer);
+      return next.anchor === prev.anchor && next.followToday === prev.followToday ? prev : next;
+    });
   }, []);
 
   useEffect(() => {
+    const timer = setInterval(tick, CLOCK_TICK_MS);
+    return () => clearInterval(timer);
+  }, [tick]);
+
+  useEffect(() => {
     if (!autoRefresh) return;
-    const refresh = () => fetchData(false);
+    // On wake, advance the clock first: if the date changed, the range effect fetches the new day.
+    const refresh = () => {
+      tick();
+      fetchData(false);
+    };
     const onVisible = () => document.visibilityState === "visible" && refresh();
     const timer = setInterval(refresh, REFRESH_INTERVAL_MS);
     document.addEventListener("visibilitychange", onVisible);
@@ -123,7 +135,7 @@ export function usePreviewData(view: PreviewView, autoRefresh: boolean) {
       window.removeEventListener("focus", refresh);
       window.removeEventListener("online", refresh);
     };
-  }, [autoRefresh, fetchData]);
+  }, [autoRefresh, fetchData, tick]);
 
   const navigate = useCallback((days: number) => {
     lastInteractionRef.current = Date.now();
@@ -134,12 +146,17 @@ export function usePreviewData(view: PreviewView, autoRefresh: boolean) {
     setAnchorState({ anchor: nowInCampus().date, followToday: true });
   }, []);
 
+  const payload = data?.payload;
   return {
-    classrooms: data?.classrooms ?? [],
-    settings: data?.settings ?? null,
-    bookings: data?.bookings ?? [],
+    classrooms: payload?.classrooms ?? [],
+    settings: payload?.settings ?? null,
+    // Bookings are only shown for the range they were fetched for, never under other dates.
+    bookings: data?.range === range ? payload!.bookings : [],
+    rangeLoaded: data?.range === range,
     loading: data === null,
-    stale: computeStaleness(lastSuccessAt, now.ms),
+    firstLoadFailed: data === null && lastFailureAt !== null,
+    failing: lastFailureAt !== null,
+    stale: autoRefresh && computeStaleness(lastSuccessAt, now.ms),
     lastSuccessAt,
     campusNow: now.campus,
     anchor,

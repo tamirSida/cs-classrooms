@@ -16,20 +16,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { format, parseISO } from "date-fns";
 
 type ApprovalCard =
-  | { kind: "single"; key: string; booking: IBooking }
-  | { kind: "series"; key: string; seriesId: string; bookings: IBooking[] };
+  | { kind: "single"; key: string; booking: IBooking; upcoming: IBooking[] }
+  | { kind: "series"; key: string; seriesId: string; bookings: IBooking[]; upcoming: IBooking[] };
 
 // Groups pending bookings into cards: one per series, one per single booking.
-// Dates that have already started are lapsed and not shown.
+// Dates that have already started are "lapsed": they can be rejected (cleared) but not approved.
 function buildCards(bookings: IBooking[]): ApprovalCard[] {
   const now = nowInCampus();
-  const upcoming = bookings.filter((b) => b.status === BookingStatus.PENDING && !hasStarted(b, now));
+  const pending = bookings.filter((b) => b.status === BookingStatus.PENDING);
+  const isUpcoming = (b: IBooking) => !hasStarted(b, now);
   const cards: ApprovalCard[] = [];
   const bySeries = new Map<string, IBooking[]>();
 
-  for (const booking of upcoming) {
+  for (const booking of pending) {
     if (!booking.seriesId) {
-      cards.push({ kind: "single", key: booking.id, booking });
+      cards.push({ kind: "single", key: booking.id, booking, upcoming: isUpcoming(booking) ? [booking] : [] });
       continue;
     }
     const group = bySeries.get(booking.seriesId) ?? [];
@@ -39,7 +40,13 @@ function buildCards(bookings: IBooking[]): ApprovalCard[] {
 
   for (const [seriesId, group] of bySeries) {
     group.sort((a, b) => a.date.localeCompare(b.date));
-    cards.push({ kind: "series", key: `series:${seriesId}`, seriesId, bookings: group });
+    cards.push({
+      kind: "series",
+      key: `series:${seriesId}`,
+      seriesId,
+      bookings: group,
+      upcoming: group.filter(isUpcoming),
+    });
   }
 
   const firstDate = (card: ApprovalCard) => (card.kind === "single" ? card.booking.date : card.bookings[0].date);
@@ -48,9 +55,10 @@ function buildCards(bookings: IBooking[]): ApprovalCard[] {
 
 export default function ApprovalsPage() {
   const { user } = useAuth();
-  const { bookings, loading, fetchPendingBookings, approveBooking, rejectBooking, reviewSeries } = useBookings();
+  const { bookings, loading, fetchPendingBookings, approveBooking, rejectBooking, reviewSeries, refetch } =
+    useBookings();
   const { classrooms } = useClassrooms();
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [busyCards, setBusyCards] = useState<Set<string>>(new Set());
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [seriesInfo, setSeriesInfo] = useState<Map<string, BookingSeriesSummary>>(new Map());
@@ -94,8 +102,16 @@ export default function ApprovalsPage() {
     );
   }
 
+  const setBusy = (key: string, busy: boolean) =>
+    setBusyCards((prev) => {
+      const next = new Set(prev);
+      if (busy) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+
   const runAction = async (card: ApprovalCard, decision: "approve" | "reject") => {
-    setActionLoading(card.key);
+    setBusy(card.key, true);
     setCardErrors((prev) => ({ ...prev, [card.key]: "" }));
     const result =
       card.kind === "series"
@@ -103,9 +119,12 @@ export default function ApprovalsPage() {
         : decision === "approve"
           ? await approveBooking(card.booking.id)
           : await rejectBooking(card.booking.id);
-    setActionLoading(null);
+    setBusy(card.key, false);
     if (!result.success) {
-      setCardErrors((prev) => ({ ...prev, [card.key]: result.error || "Action failed" }));
+      const conflicts = "conflicts" in result ? result.conflicts : undefined;
+      const detail = conflicts?.length ? ` Taken: ${conflicts.map(formatDateLabel).join(", ")}.` : "";
+      setCardErrors((prev) => ({ ...prev, [card.key]: `${result.error || "Action failed"}${detail}` }));
+      refetch();
     }
   };
 
@@ -167,7 +186,8 @@ export default function ApprovalsPage() {
               const first = card.kind === "single" ? card.booking : card.bookings[0];
               const summary = card.kind === "series" ? seriesInfo.get(card.seriesId) : undefined;
               const isExpanded = expanded.has(card.key);
-              const busy = actionLoading === card.key;
+              const busy = busyCards.has(card.key);
+              const lapsedCount = (card.kind === "series" ? card.bookings.length : 1) - card.upcoming.length;
               const allLabel = card.kind === "series" ? " all" : "";
 
               return (
@@ -182,7 +202,11 @@ export default function ApprovalsPage() {
                         <CardDescription>{first.userEmail}</CardDescription>
                       </div>
                       <Badge variant="warning">
-                        {card.kind === "series" ? `Recurring, ${card.bookings.length} dates` : "Pending"}
+                        {card.kind === "series"
+                          ? `Recurring, ${card.upcoming.length} upcoming${lapsedCount ? `, ${lapsedCount} lapsed` : ""}`
+                          : lapsedCount
+                            ? "Already started"
+                            : "Pending"}
                       </Badge>
                     </div>
                   </CardHeader>
@@ -242,10 +266,12 @@ export default function ApprovalsPage() {
                         <X className="h-4 w-4 mr-2" />
                         Reject{allLabel}
                       </Button>
-                      <Button onClick={() => runAction(card, "approve")} disabled={busy}>
-                        <Check className="h-4 w-4 mr-2" />
-                        Approve{allLabel}
-                      </Button>
+                      {card.upcoming.length > 0 && (
+                        <Button onClick={() => runAction(card, "approve")} disabled={busy}>
+                          <Check className="h-4 w-4 mr-2" />
+                          Approve{allLabel}
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

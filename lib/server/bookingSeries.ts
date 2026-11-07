@@ -20,7 +20,14 @@ import {
   usedMinutes,
   validateSlotBasics,
 } from "@/lib/bookings";
-import { CancelScope, describeRule, RecurrenceRule, selectForCancel, validateRule } from "@/lib/recurrence";
+import {
+  CancelScope,
+  describeRule,
+  MIN_OCCURRENCES,
+  RecurrenceRule,
+  selectForCancel,
+  validateRule,
+} from "@/lib/recurrence";
 import { CampusNow, hasStarted, nowInCampus } from "@/lib/time";
 import { HttpError } from "./http";
 import { getServerSettings, ServerSettings } from "./settings";
@@ -157,7 +164,14 @@ export async function createSeries(user: IUser, input: SeriesInput) {
     }
 
     const toBook = entries.filter((e) => e.status === "available" && !skip.has(e.date)).map((e) => e.date);
-    if (toBook.length === 0) throw new HttpError(400, "There are no available dates to book");
+    if (toBook.length < MIN_OCCURRENCES) {
+      throw new HttpError(
+        400,
+        toBook.length === 0
+          ? "There are no available dates to book"
+          : "Only one date is available. Use a normal booking instead."
+      );
+    }
     const skippedDates = dates.filter((d) => !toBook.includes(d));
 
     const now = Timestamp.now();
@@ -267,24 +281,34 @@ export async function getSeriesSummaries(ids: string[]): Promise<BookingSeriesSu
   if (unique.length === 0) return [];
 
   const db = adminDb();
+  const now = nowInCampus();
   const refs = unique.map((id) => db.collection(Collections.BOOKING_SERIES).doc(id));
   const snaps = await db.getAll(...refs);
-  return snaps
-    .filter((snap) => snap.exists)
-    .map((snap) => {
-      const s = { id: snap.id, ...snap.data() } as IBookingSeries;
-      return {
-        id: s.id,
-        classroomId: s.classroomId,
-        userId: s.userId,
-        userName: s.userName,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        startDate: s.startDate,
-        rule: s.rule,
-        skippedDates: s.skippedDates ?? [],
-        createdBy: s.createdBy,
-        ruleText: describeRule(s.rule, s.startDate),
-      };
-    });
+
+  return Promise.all(
+    snaps
+      .filter((snap) => snap.exists)
+      .map(async (snap) => {
+        const s = { id: snap.id, ...snap.data() } as IBookingSeries;
+        const upcoming = (await getSeriesBookings(db, s.id))
+          .filter((b) => belongsToSeries(b, s) && b.status !== BookingStatus.CANCELLED && !hasStarted(b, now))
+          .map((b) => b.date)
+          .sort();
+        return {
+          id: s.id,
+          classroomId: s.classroomId,
+          userId: s.userId,
+          userName: s.userName,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          startDate: s.startDate,
+          rule: s.rule,
+          skippedDates: s.skippedDates ?? [],
+          createdBy: s.createdBy,
+          ruleText: describeRule(s.rule, s.startDate),
+          remaining: upcoming.length,
+          nextDate: upcoming[0] ?? null,
+        };
+      })
+  );
 }

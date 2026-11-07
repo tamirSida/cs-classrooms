@@ -30,7 +30,7 @@ import {
   SeriesDateEntry,
   SeriesInput,
 } from "@/lib/models";
-import { RecurrenceRule } from "@/lib/recurrence";
+import { formatDateLabel, RecurrenceRule } from "@/lib/recurrence";
 import { hasStarted, nowInCampus } from "@/lib/time";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSeriesPreview, useSeriesSummary } from "@/hooks/useBookingSeries";
@@ -118,11 +118,11 @@ export function BookingModal({
   }, [booking, selectedStartTime, selectedEndTime, isOpen]);
 
   const seriesInput = useMemo<SeriesInput | null>(() => {
-    if (!repeatOn || !repeat || booking || !classroom || !startTime || !endTime || startTime >= endTime) {
+    if (!canRecur || !repeatOn || !repeat || booking || !classroom || !startTime || !endTime || startTime >= endTime) {
       return null;
     }
     return { classroomId: classroom.id, startDate, startTime, endTime, rule: toRecurrenceRule(repeat) };
-  }, [repeatOn, repeat, booking, classroom, startDate, startTime, endTime]);
+  }, [canRecur, repeatOn, repeat, booking, classroom, startDate, startTime, endTime]);
 
   const preview = useSeriesPreview(seriesInput);
   const seriesKey = seriesInput ? JSON.stringify(seriesInput) : null;
@@ -246,7 +246,7 @@ export function BookingModal({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[480px] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {booking ? (isViewMode ? "Booking Details" : "Edit Booking") : "New Booking"}
@@ -257,7 +257,7 @@ export function BookingModal({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
             <div className="flex items-center gap-3 text-sm">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <span>{format(displayDate, "EEEE, MMMM d, yyyy")}</span>
@@ -276,6 +276,13 @@ export function BookingModal({
                   <RepeatIcon className="h-3.5 w-3.5 text-muted-foreground" />
                   <span>{summary ? summary.ruleText : "Recurring booking"}</span>
                 </div>
+                {summary && (
+                  <p className="text-xs text-muted-foreground">
+                    {summary.nextDate
+                      ? `${summary.remaining} upcoming, next on ${formatDateLabel(summary.nextDate)}`
+                      : "No upcoming dates left"}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   {seriesStarted
                     ? "This date has started and can't be changed."

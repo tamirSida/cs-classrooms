@@ -132,7 +132,8 @@ export function MyBookingsView() {
     return map;
   }, [activeBookings]);
 
-  if (loading) {
+  // Skeleton only for the first load; saves and cancels must not unmount open dialogs.
+  if (loading && bookings.length === 0) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
@@ -367,6 +368,7 @@ export function MyBookingsView() {
       {/* Edit booking modal */}
       {settings && (
         <BookingModal
+          key={editingBooking?.id ?? "closed"}
           isOpen={!!editingBooking}
           onClose={() => setEditingBooking(null)}
           booking={editingBooking}

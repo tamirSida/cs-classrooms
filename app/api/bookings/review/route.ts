@@ -25,7 +25,8 @@ interface ReviewBody {
 }
 
 // POST /api/bookings/review - approve or reject one pending booking or a whole pending series.
-// Only dates that have not started are reviewed; past pending dates are left as they are.
+// Approval covers only dates that have not started; rejection also clears lapsed pending dates.
+// Only upcoming dates are listed in the email.
 export const POST = withErrors("API/bookings/review", async (request: NextRequest) => {
   const user = await requireUser(request, ADMIN_ROLES);
   const { decision, bookingId, seriesId } = await readJson<ReviewBody>(request);
@@ -49,15 +50,21 @@ export const POST = withErrors("API/bookings/review", async (request: NextReques
       candidates = [bookingFromDoc(snap)];
     }
 
-    const targets = candidates.filter((b) => b.status === BookingStatus.PENDING && !hasStarted(b, now));
-    if (targets.length === 0) throw new HttpError(400, "Nothing left to review: no upcoming pending dates");
+    const pending = candidates.filter((b) => b.status === BookingStatus.PENDING);
+    const targets = decision === "approve" ? pending.filter((b) => !hasStarted(b, now)) : pending;
+    if (targets.length === 0) {
+      throw new HttpError(400, decision === "approve" ? "These dates have already started" : "Nothing left to review");
+    }
 
     if (decision === "approve") {
       const dates = targets.map((b) => b.date).sort();
       const active = await loadActiveBookings(db, dates[0], dates[dates.length - 1], tx);
       const conflicts = conflictingDates(active, targets[0].classroomId, targets, new Set(targets.map((b) => b.id)));
       if (conflicts.size > 0) {
-        throw new HttpError(409, "Some dates are now taken by other bookings", { conflicts: [...conflicts].sort() });
+        const message = seriesId
+          ? "Some dates are now taken by other bookings"
+          : "This request overlaps another booking in the same room. Reject or move one of them first.";
+        throw new HttpError(409, message, { conflicts: [...conflicts].sort() });
       }
     }
 
@@ -74,14 +81,15 @@ export const POST = withErrors("API/bookings/review", async (request: NextReques
   });
 
   const name = await classroomName(db, reviewed[0].classroomId);
+  const upcoming = reviewed.filter((b) => !hasStarted(b, now));
   const reviewedSeries = series as IBookingSeries | null;
   if (reviewedSeries) {
     await sendSeriesEmail(
       reviewedSeries.userEmail,
       decision === "approve" ? "approved" : "rejected",
-      seriesEmailData(reviewedSeries, name, reviewed.map((b) => b.date))
+      seriesEmailData(reviewedSeries, name, upcoming.map((b) => b.date))
     );
-  } else {
+  } else if (upcoming.length > 0) {
     await sendBookingEmail(reviewed[0], name, { kind: decision === "approve" ? "approved" : "rejected" });
   }
 

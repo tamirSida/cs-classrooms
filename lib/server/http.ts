@@ -29,9 +29,14 @@ export function withErrors<A extends unknown[]>(label: string, handler: Handler<
 }
 
 export async function readJson<T>(request: Request): Promise<T> {
+  let body: unknown;
   try {
-    return (await request.json()) as T;
+    body = await request.json();
   } catch {
     throw new HttpError(400, "Invalid JSON body");
   }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new HttpError(400, "Invalid JSON body");
+  }
+  return body as T;
 }

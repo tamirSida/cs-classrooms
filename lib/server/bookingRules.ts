@@ -45,8 +45,9 @@ export async function loadActiveBookings(
     });
 }
 
-export async function loadClassroom(db: Firestore, classroomId: string): Promise<ClassroomRecord> {
-  const snap = await db.collection(Collections.CLASSROOMS).doc(classroomId).get();
+export async function loadClassroom(db: Firestore, classroomId: string, tx?: Transaction): Promise<ClassroomRecord> {
+  const ref = db.collection(Collections.CLASSROOMS).doc(classroomId);
+  const snap = tx ? await tx.get(ref) : await ref.get();
   if (!snap.exists) throw new HttpError(404, "Classroom not found");
   const data = snap.data()!;
   return { id: snap.id, name: data.name ?? "Classroom", config: data.config ?? {} };

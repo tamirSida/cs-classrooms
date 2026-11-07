@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -15,6 +16,7 @@ import { SeriesDateEntry, SeriesDateStatus } from "@/lib/models";
 import {
   formatDateLabel,
   Frequency,
+  MAX_COUNT,
   MAX_INTERVAL,
   RecurrenceRule,
   WEEKDAY_LABELS,
@@ -56,6 +58,40 @@ export function toRecurrenceRule(settings: RepeatSettings): RecurrenceRule {
   };
 }
 
+interface NumberFieldProps {
+  id?: string;
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+  className?: string;
+}
+
+// Lets the user type freely; the value is clamped and committed on blur or Enter.
+function NumberField({ id, value, min, max, onCommit, className }: NumberFieldProps) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const parsed = Number(draft);
+    onCommit(Number.isFinite(parsed) && draft.trim() !== "" ? Math.min(max, Math.max(min, Math.round(parsed))) : value);
+    setDraft(null);
+  };
+  return (
+    <Input
+      id={id}
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      value={draft ?? String(value)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && commit()}
+      className={className}
+    />
+  );
+}
+
 const UNIT_LABEL: Record<Frequency, string> = { daily: "day(s)", weekly: "week(s)", monthly: "month(s)" };
 
 interface RepeatSectionProps {
@@ -95,15 +131,12 @@ export function RepeatSection({ startDate, value, onChange, firstDate }: RepeatS
         <div className="space-y-2">
           <Label htmlFor="repeat-interval">Every</Label>
           <div className="flex items-center gap-2">
-            <Input
+            <NumberField
               id="repeat-interval"
-              type="number"
               min={1}
               max={MAX_INTERVAL}
               value={value.interval}
-              onChange={(e) =>
-                update({ interval: Math.min(MAX_INTERVAL, Math.max(1, Number(e.target.value) || 1)) })
-              }
+              onCommit={(interval) => update({ interval })}
               className="w-20"
             />
             <span className="text-sm text-muted-foreground">{UNIT_LABEL[value.frequency]}</span>
@@ -146,11 +179,11 @@ export function RepeatSection({ startDate, value, onChange, firstDate }: RepeatS
         <RadioGroup value={value.endType} onValueChange={(v) => update({ endType: v as RepeatSettings["endType"] })}>
           <RadioGroupItem value="count" id="repeat-end-count">
             <span className="text-sm">After</span>
-            <Input
-              type="number"
+            <NumberField
               min={2}
+              max={MAX_COUNT}
               value={value.count}
-              onChange={(e) => update({ endType: "count", count: Math.max(2, Number(e.target.value) || 2) })}
+              onCommit={(count) => update({ endType: "count", count })}
               className="h-8 w-20"
             />
             <span className="text-sm">bookings</span>

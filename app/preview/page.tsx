@@ -5,7 +5,7 @@ import { format, addDays, parse } from "date-fns";
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 import { TimeSlotFactory } from "@/lib/models";
-import { hasStarted } from "@/lib/time";
+import { hasStarted, nowInCampus } from "@/lib/time";
 import { PreviewBooking, PreviewView, usePreviewData } from "@/hooks/usePreviewData";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -43,6 +43,9 @@ export default function PreviewPage() {
     settings,
     bookings,
     loading,
+    rangeLoaded,
+    firstLoadFailed,
+    failing,
     stale,
     lastSuccessAt,
     campusNow,
@@ -152,6 +155,9 @@ export default function PreviewPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-4">
+        {firstLoadFailed && (
+          <p className="mb-4 text-sm text-destructive">Can&apos;t reach the server. Retrying automatically.</p>
+        )}
         <div className="flex items-center justify-between mb-4">
           <Skeleton className="h-10 w-48" />
           <Skeleton className="h-10 w-32" />
@@ -217,7 +223,7 @@ export default function PreviewPage() {
             >
               <RefreshCw className={cn("h-4 w-4 mr-2", stale && "text-destructive")} />
               <span className={cn("text-xs", stale ? "text-destructive" : "text-muted-foreground")}>
-                {lastSuccessAt ? format(lastSuccessAt, "HH:mm") : "--:--"}
+                {lastSuccessAt ? nowInCampus(new Date(lastSuccessAt)).time : "--:--"}
                 {stale && ", reconnecting"}
               </span>
             </Button>
@@ -361,7 +367,14 @@ export default function PreviewPage() {
             </div>
           </div>
         ) : (
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col relative">
+            {!rangeLoaded && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/70">
+                <span className="text-sm text-muted-foreground">
+                  {failing ? "Can't reach the server. Retrying..." : "Loading schedule..."}
+                </span>
+              </div>
+            )}
             {/* Headers */}
             <div
               className="z-10 bg-background border-b grid shrink-0"

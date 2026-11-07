@@ -13,21 +13,26 @@ export function useBookings() {
   const [error, setError] = useState<string | null>(null);
 
   const lastLoaderRef = useRef<(() => Promise<IBooking[]>) | null>(null);
+  const loadSequenceRef = useRef(0);
 
   // Runs a loader, remembering it so refetch() can repeat the last view's query.
+  // Responses from superseded loads are ignored so a slow old query can't overwrite a newer view.
   const load = useCallback(async (loader: () => Promise<IBooking[]>, silent = false) => {
     lastLoaderRef.current = loader;
+    const sequence = ++loadSequenceRef.current;
     if (!silent) setLoading(true);
     setError(null);
     try {
       const data = await loader();
-      setBookings(data);
+      if (sequence === loadSequenceRef.current) setBookings(data);
       return data;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch bookings");
+      if (sequence === loadSequenceRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to fetch bookings");
+      }
       return [];
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && sequence === loadSequenceRef.current) setLoading(false);
     }
   }, []);
 
@@ -179,7 +184,8 @@ export function useBookings() {
         const result = await readApiResult<{ reviewed: string[] }>(response, `Failed to ${decision} booking`);
         if (!result.ok) {
           setError(result.error);
-          return { success: false, error: result.error };
+          const conflicts = (result.data as { conflicts?: string[] } | undefined)?.conflicts;
+          return { success: false, error: result.error, conflicts };
         }
         const reviewed = new Set(result.data.reviewed);
         const status = decision === "approve" ? BookingStatus.CONFIRMED : BookingStatus.CANCELLED;

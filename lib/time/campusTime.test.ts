@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDaysToDateString,
+  daysBetween,
   hasStarted,
   isValidDateString,
   nowInCampus,
@@ -47,5 +48,11 @@ describe("hasStarted", () => {
 
   it("is false one minute before", () => {
     expect(hasStarted(booking, { date: "2026-11-10", time: "09:59" })).toBe(false);
+  });
+});
+
+describe("daysBetween", () => {
+  it("counts whole days across month ends", () => {
+    expect(daysBetween("2026-12-30", "2027-01-13")).toBe(14);
   });
 });

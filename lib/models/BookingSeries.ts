@@ -20,6 +20,8 @@ export interface IBookingSeries {
 // Fields safe to show any signed-in user (no email).
 export type BookingSeriesSummary = Omit<IBookingSeries, "userEmail" | "createdAt" | "updatedAt"> & {
   ruleText: string;
+  remaining: number; // live dates that have not started
+  nextDate: string | null;
 };
 
 export type SeriesDateStatus = "available" | "conflict" | "over_limit" | "past";
