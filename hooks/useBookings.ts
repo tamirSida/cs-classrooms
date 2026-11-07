@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { IBooking, IBookingCreate, IBookingUpdate, BookingStatus } from "@/lib/models";
 import { bookingService } from "@/lib/services";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,62 +12,48 @@ export function useBookings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBookingsForClassroom = useCallback(
-    async (classroomId: string, startDate: string, endDate: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await bookingService.getBookingsForClassroom(
-          classroomId,
-          startDate,
-          endDate
-        );
-        setBookings(data);
-        return data;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch bookings");
-        return [];
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+  const lastLoaderRef = useRef<(() => Promise<IBooking[]>) | null>(null);
 
-  const fetchAllBookings = useCallback(
-    async (startDate: string, endDate: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await bookingService.getAllBookingsForDateRange(startDate, endDate);
-        setBookings(data);
-        return data;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch bookings");
-        return [];
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
-  const fetchUserBookings = useCallback(async () => {
-    if (!user) return [];
-
-    setLoading(true);
+  // Runs a loader, remembering it so refetch() can repeat the last view's query.
+  const load = useCallback(async (loader: () => Promise<IBooking[]>, silent = false) => {
+    lastLoaderRef.current = loader;
+    if (!silent) setLoading(true);
     setError(null);
     try {
-      const data = await bookingService.getBookingsForUser(user.id);
+      const data = await loader();
       setBookings(data);
       return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch bookings");
       return [];
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [user]);
+  }, []);
+
+  const fetchBookingsForClassroom = useCallback(
+    (classroomId: string, startDate: string, endDate: string) =>
+      load(() => bookingService.getBookingsForClassroom(classroomId, startDate, endDate)),
+    [load]
+  );
+
+  const fetchAllBookings = useCallback(
+    (startDate: string, endDate: string) =>
+      load(() => bookingService.getAllBookingsForDateRange(startDate, endDate)),
+    [load]
+  );
+
+  const fetchUserBookings = useCallback(async () => {
+    if (!user) return [];
+    const userId = user.id;
+    return load(() => bookingService.getBookingsForUser(userId));
+  }, [user, load]);
+
+  // Re-runs the last query without showing the loading skeleton.
+  const refetch = useCallback(async () => {
+    const loader = lastLoaderRef.current;
+    return loader ? load(loader, true) : [];
+  }, [load]);
 
   const createBooking = useCallback(
     async (data: IBookingCreate) => {
@@ -173,20 +159,10 @@ export function useBookings() {
     [user]
   );
 
-  const fetchPendingBookings = useCallback(async (classroomId?: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await bookingService.getPendingBookings(classroomId);
-      setBookings(data);
-      return data;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch pending bookings");
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchPendingBookings = useCallback(
+    (classroomId?: string) => load(() => bookingService.getPendingBookings(classroomId)),
+    [load]
+  );
 
   const review = useCallback(
     async (target: { bookingId?: string; seriesId?: string }, decision: "approve" | "reject") => {
@@ -233,6 +209,7 @@ export function useBookings() {
     fetchAllBookings,
     fetchUserBookings,
     fetchPendingBookings,
+    refetch,
     createBooking,
     modifyBooking,
     cancelBooking,

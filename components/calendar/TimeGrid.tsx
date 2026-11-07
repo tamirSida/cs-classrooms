@@ -13,6 +13,8 @@ import {
 import { cn } from "@/lib/utils";
 import { IBooking, IClassroom, BookingStatus, TimeSlotFactory, UserRole, getClassroomColor, CLASSROOM_COLOR_OPTIONS } from "@/lib/models";
 import { useAuth } from "@/contexts/AuthContext";
+import { RepeatIcon } from "@/components/icons";
+import { toMinutes } from "@/lib/bookings";
 
 // User's own booking color
 const USER_COLOR = { bg: "bg-primary", text: "text-primary-foreground", border: "border-primary", light: "bg-primary/20" };
@@ -367,7 +369,7 @@ export function TimeGrid({
                             }}
                             title={`${booking.userName}: ${booking.startTime} - ${booking.endTime}`}
                           >
-                            <div className="font-medium truncate">{booking.userName}</div>
+                            <BookingTitle booking={booking} />
                             <div className="truncate opacity-80">
                               {booking.startTime}-{booking.endTime}
                             </div>
@@ -506,7 +508,7 @@ export function TimeGrid({
                         onBookingClick(booking);
                       }}
                     >
-                      <div className="font-medium truncate">{booking.userName}</div>
+                      <BookingTitle booking={booking} />
                       <div className="truncate">
                         {booking.startTime} - {booking.endTime}
                       </div>
@@ -518,6 +520,19 @@ export function TimeGrid({
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+const MIN_MINUTES_FOR_ICON = 30;
+
+function BookingTitle({ booking }: { booking: IBooking }) {
+  const showIcon =
+    !!booking.seriesId && toMinutes(booking.endTime) - toMinutes(booking.startTime) >= MIN_MINUTES_FOR_ICON;
+  return (
+    <div className="font-medium truncate flex items-center gap-1">
+      {showIcon && <RepeatIcon className="h-2.5 w-2.5" />}
+      <span className="truncate">{booking.userName}</span>
     </div>
   );
 }

@@ -21,3 +21,42 @@ export interface IBookingSeries {
 export type BookingSeriesSummary = Omit<IBookingSeries, "userEmail" | "createdAt" | "updatedAt"> & {
   ruleText: string;
 };
+
+export type SeriesDateStatus = "available" | "conflict" | "over_limit" | "past";
+
+export interface SeriesDateEntry {
+  date: string;
+  status: SeriesDateStatus;
+}
+
+export interface SeriesInput {
+  classroomId: string;
+  startDate: string;
+  startTime: string;
+  endTime: string;
+  rule: RecurrenceRule;
+  skipDates?: string[];
+}
+
+export interface SeriesPreview {
+  entries: SeriesDateEntry[];
+  ruleText: string;
+}
+
+export interface SeriesCreateResult {
+  seriesId: string;
+  booked: string[];
+  skipped: string[];
+  status: string;
+}
+
+export interface BookingRef {
+  id: string;
+  date: string;
+}
+
+export interface SeriesCancelResult {
+  cancelled: BookingRef[];
+  keptStarted: BookingRef[];
+  dryRun: boolean;
+}

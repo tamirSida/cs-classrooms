@@ -3,7 +3,15 @@ import type { Firestore } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
 import { Collections } from "@/lib/firebase/collections";
-import { BookingSeriesSummary, BookingStatus, IBookingSeries, IUser, UserRole } from "@/lib/models";
+import {
+  BookingSeriesSummary,
+  BookingStatus,
+  IBookingSeries,
+  IUser,
+  SeriesDateEntry,
+  SeriesInput,
+  UserRole,
+} from "@/lib/models";
 import {
   ActiveBooking,
   conflictingDates,
@@ -26,22 +34,6 @@ import {
 } from "./bookingRules";
 import { sendSeriesEmail } from "./bookingEmails";
 import { belongsToSeries, classroomName, getSeriesBookings, getSeriesOrThrow, seriesEmailData } from "./seriesStore";
-
-export type SeriesDateStatus = "available" | "conflict" | "over_limit" | "past";
-
-export interface SeriesDateEntry {
-  date: string;
-  status: SeriesDateStatus;
-}
-
-export interface SeriesInput {
-  classroomId: string;
-  startDate: string;
-  startTime: string;
-  endTime: string;
-  rule: RecurrenceRule;
-  skipDates?: string[];
-}
 
 interface PreparedSeries {
   input: SeriesInput;
