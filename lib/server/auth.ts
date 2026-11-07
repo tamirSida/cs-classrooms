@@ -1,0 +1,35 @@
+import "server-only";
+import { adminAuth, adminDb } from "@/lib/firebase/admin";
+import { Collections } from "@/lib/firebase/collections";
+import { IUser, UserRole } from "@/lib/models";
+import { HttpError } from "./http";
+
+export const ADMIN_ROLES = [UserRole.ADMIN, UserRole.SUPER_ADMIN];
+
+// Resolves the caller from a Firebase ID token. The acting user always comes from
+// the token, never from the request body.
+export async function requireUser(request: Request, roles?: UserRole[]): Promise<IUser> {
+  const header = request.headers.get("authorization") ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!token) throw new HttpError(401, "Sign in required");
+
+  let uid: string;
+  try {
+    uid = (await adminAuth().verifyIdToken(token)).uid;
+  } catch {
+    throw new HttpError(401, "Your session has expired. Please sign in again.");
+  }
+
+  const snap = await adminDb().collection(Collections.USERS).doc(uid).get();
+  if (!snap.exists) throw new HttpError(403, "Account not found");
+
+  const user = { id: snap.id, ...snap.data() } as IUser;
+  if (user.isActive === false) throw new HttpError(403, "Your account is deactivated");
+  if (roles && !roles.includes(user.role)) throw new HttpError(403, "You don't have permission to do this");
+
+  return user;
+}
+
+export function isAdminRole(role: UserRole): boolean {
+  return ADMIN_ROLES.includes(role);
+}
