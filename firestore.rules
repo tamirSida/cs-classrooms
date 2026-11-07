@@ -15,45 +15,76 @@ service cloud.firestore {
       return isAuthed() && userDoc().role == 'super_admin';
     }
 
-    // True when an update changes the `role` field.
-    function roleChanged() {
-      return request.resource.data.role != resource.data.role;
+    function isAdmin() {
+      return isAuthed() && userDoc().role in ['admin', 'super_admin'];
+    }
+
+    function changesOnly(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // First-run settings may only hold defaults, so whoever creates the doc
+    // cannot switch on a permission or loosen signup.
+    function hasDefaultSettingsOnly() {
+      let d = request.resource.data;
+      return d.get('allowRecurringForAllUsers', false) == false
+        && d.get('adminCanOverrideBookings', false) == false
+        && d.get('restrictSignupDomain', true) == true
+        && d.get('allowedSignupDomains', ['runi.ac.il']) == ['runi.ac.il']
+        && d.get('defaultMaxTimePerDay', 60) == 60
+        && d.get('operatingHours', {'start': '08:00', 'end': '18:00'}) == {'start': '08:00', 'end': '18:00'}
+        && d.get('timeSlotDuration', 15) == 15
+        && d.get('requiresApproval', false) == false
+        && !('signupCode' in d);
     }
 
     // ─── users ──────────────────────────────────────────────────────
     // Reads open to any authed user. Creates/deletes only via admin SDK
-    // (API routes). Updates open EXCEPT changing `role`, which must be
-    // performed by a super_admin.
+    // (API routes). Super admins edit anything; admins only manage classroom
+    // assignments; users only rename themselves. Email, role and isActive are
+    // never self-editable because the server trusts them.
     match /users/{uid} {
       allow read: if isAuthed();
       allow create, delete: if false;
-      allow update: if isAuthed() && (!roleChanged() || isSuperAdmin());
+      allow update: if isSuperAdmin()
+        || (isAdmin() && changesOnly(['assignedClassrooms', 'updatedAt']))
+        || (isAuthed() && request.auth.uid == uid && changesOnly(['displayName', 'updatedAt']));
     }
 
     // ─── classrooms ─────────────────────────────────────────────────
-    // Reads + updates open. Create/delete go through API routes.
+    // Reads open. Updates for admins only. Create/delete go through API routes.
     match /classrooms/{id} {
       allow read: if isAuthed();
       allow create, delete: if false;
-      allow update: if isAuthed();
+      allow update: if isAdmin();
     }
 
     // ─── bookings ───────────────────────────────────────────────────
-    // Reads open. Approve/reject still use client SDK, so update is open.
-    // Create + delete go via API routes.
+    // Reads open. All writes go through API routes, which check identity,
+    // conflicts and approval.
     match /bookings/{id} {
       allow read: if isAuthed();
-      allow create, delete: if false;
-      allow update: if isAuthed();
+      allow write: if false;
+    }
+
+    // ─── bookingSeries ──────────────────────────────────────────────
+    // Written only by API routes (admin SDK).
+    match /bookingSeries/{id} {
+      allow read: if isAuthed();
+      allow write: if false;
     }
 
     // ─── settings ───────────────────────────────────────────────────
-    // /settings page reads + writes via client SDK. Create only if the
-    // doc doesn't already exist (matches getOrCreateGlobalSettings).
+    // /settings page writes via client SDK (super admins only). Any signed-in
+    // user may create the global doc on first run, with defaults only
+    // (matches getOrCreateGlobalSettings).
     match /settings/{id} {
       allow read: if isAuthed();
-      allow create: if isAuthed() && !exists(/databases/$(database)/documents/settings/$(id));
-      allow update: if isAuthed();
+      allow create: if isAuthed()
+        && id == 'global'
+        && !exists(/databases/$(database)/documents/settings/$(id))
+        && hasDefaultSettingsOnly();
+      allow update: if isSuperAdmin();
       allow delete: if false;
     }
 

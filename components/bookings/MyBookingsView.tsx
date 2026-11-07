@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { format, parseISO, startOfWeek, endOfWeek, addDays, isToday, isBefore, parse } from "date-fns";
+import { format, parseISO, startOfWeek, endOfWeek, addDays, isToday, isBefore } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,12 +21,15 @@ import { settingsService } from "@/lib/services";
 import { cn } from "@/lib/utils";
 import { Calendar, Table2, Trash2, Pencil, ChevronLeft, ChevronRight, Clock, MapPin } from "lucide-react";
 import { BookingModal } from "@/components/calendar/BookingModal";
+import { CancelScopeDialog } from "./CancelScopeDialog";
+import { RepeatIcon } from "@/components/icons";
+import { hasStarted, nowInCampus } from "@/lib/time";
 
 type ViewMode = "table" | "calendar";
 
 export function MyBookingsView() {
   const { user } = useAuth();
-  const { bookings, loading, fetchUserBookings, cancelBooking, modifyBooking } = useBookings();
+  const { bookings, loading, fetchUserBookings, cancelBooking, modifyBooking, refetch } = useBookings();
   const { classrooms, fetchClassrooms } = useClassrooms();
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
@@ -35,6 +38,7 @@ export function MyBookingsView() {
   const [bookingToCancel, setBookingToCancel] = useState<IBooking | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [editingBooking, setEditingBooking] = useState<IBooking | null>(null);
+  const [seriesCancelBooking, setSeriesCancelBooking] = useState<IBooking | null>(null);
   const [settings, setSettings] = useState<ISettings | null>(null);
 
   useEffect(() => {
@@ -88,6 +92,10 @@ export function MyBookingsView() {
   }, [activeBookings]);
 
   const handleCancelClick = (booking: IBooking) => {
+    if (booking.seriesId) {
+      setSeriesCancelBooking(booking);
+      return;
+    }
     setBookingToCancel(booking);
     setCancelDialogOpen(true);
   };
@@ -102,19 +110,11 @@ export function MyBookingsView() {
     if (result.success) {
       setCancelDialogOpen(false);
       setBookingToCancel(null);
-      fetchUserBookings();
+      refetch();
     }
   };
 
-  const canCancel = (booking: IBooking) => {
-    const now = new Date();
-    const bookingDateTime = parse(
-      `${booking.date} ${booking.startTime}`,
-      "yyyy-MM-dd HH:mm",
-      new Date()
-    );
-    return !isBefore(bookingDateTime, now);
-  };
+  const canCancel = (booking: IBooking) => !hasStarted(booking, nowInCampus());
 
   // Calendar view data
   const weekDays = useMemo(() => {
@@ -132,7 +132,8 @@ export function MyBookingsView() {
     return map;
   }, [activeBookings]);
 
-  if (loading) {
+  // Skeleton only for the first load; saves and cancels must not unmount open dialogs.
+  if (loading && bookings.length === 0) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
@@ -354,9 +355,20 @@ export function MyBookingsView() {
         </DialogContent>
       </Dialog>
 
+      <CancelScopeDialog
+        booking={seriesCancelBooking}
+        open={!!seriesCancelBooking}
+        onOpenChange={(open) => !open && setSeriesCancelBooking(null)}
+        onDone={() => {
+          setSeriesCancelBooking(null);
+          refetch();
+        }}
+      />
+
       {/* Edit booking modal */}
       {settings && (
         <BookingModal
+          key={editingBooking?.id ?? "closed"}
           isOpen={!!editingBooking}
           onClose={() => setEditingBooking(null)}
           booking={editingBooking}
@@ -368,10 +380,11 @@ export function MyBookingsView() {
           operatingHours={settings.operatingHours}
           onSave={async (data) => {
             if (!editingBooking) return { success: false, error: "No booking selected" };
-            const result = await modifyBooking(editingBooking.id, data);
+            const { date, startTime, endTime } = data;
+            const result = await modifyBooking(editingBooking.id, { date, startTime, endTime });
             if (result.success) {
               setEditingBooking(null);
-              fetchUserBookings();
+              refetch();
             }
             return result;
           }}
@@ -380,10 +393,11 @@ export function MyBookingsView() {
             const result = await cancelBooking(editingBooking.id);
             if (result.success) {
               setEditingBooking(null);
-              fetchUserBookings();
+              refetch();
             }
             return result;
           }}
+          onSeriesChanged={() => refetch()}
           canOverride={
             !!user && (
               user.role === UserRole.SUPER_ADMIN ||
@@ -417,6 +431,7 @@ function BookingCard({ booking, classroomInfo, onCancel, onEdit, canCancel, isPa
           <div className={cn("w-2 h-12 rounded-full", classroomInfo?.color || "bg-primary")} />
           <div>
             <div className="flex items-center gap-2">
+              {booking.seriesId && <RepeatIcon className="h-3 w-3 text-muted-foreground" />}
               <span className="font-medium">{classroomInfo?.name || "Unknown Classroom"}</span>
               {booking.status === BookingStatus.PENDING && (
                 <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">

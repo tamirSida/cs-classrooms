@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { IBooking, IBookingCreate, IBookingUpdate, BookingStatus } from "@/lib/models";
 import { bookingService } from "@/lib/services";
 import { useAuth } from "@/contexts/AuthContext";
+import { authedFetch, readApiResult } from "@/lib/utils";
 
 export function useBookings() {
   const { user } = useAuth();
@@ -11,62 +12,53 @@ export function useBookings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBookingsForClassroom = useCallback(
-    async (classroomId: string, startDate: string, endDate: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await bookingService.getBookingsForClassroom(
-          classroomId,
-          startDate,
-          endDate
-        );
-        setBookings(data);
-        return data;
-      } catch (err) {
+  const lastLoaderRef = useRef<(() => Promise<IBooking[]>) | null>(null);
+  const loadSequenceRef = useRef(0);
+
+  // Runs a loader, remembering it so refetch() can repeat the last view's query.
+  // Responses from superseded loads are ignored so a slow old query can't overwrite a newer view.
+  const load = useCallback(async (loader: () => Promise<IBooking[]>, silent = false) => {
+    lastLoaderRef.current = loader;
+    const sequence = ++loadSequenceRef.current;
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      const data = await loader();
+      if (sequence === loadSequenceRef.current) setBookings(data);
+      return data;
+    } catch (err) {
+      if (sequence === loadSequenceRef.current) {
         setError(err instanceof Error ? err.message : "Failed to fetch bookings");
-        return [];
-      } finally {
-        setLoading(false);
       }
-    },
-    []
+      return [];
+    } finally {
+      if (!silent && sequence === loadSequenceRef.current) setLoading(false);
+    }
+  }, []);
+
+  const fetchBookingsForClassroom = useCallback(
+    (classroomId: string, startDate: string, endDate: string) =>
+      load(() => bookingService.getBookingsForClassroom(classroomId, startDate, endDate)),
+    [load]
   );
 
   const fetchAllBookings = useCallback(
-    async (startDate: string, endDate: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await bookingService.getAllBookingsForDateRange(startDate, endDate);
-        setBookings(data);
-        return data;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch bookings");
-        return [];
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
+    (startDate: string, endDate: string) =>
+      load(() => bookingService.getAllBookingsForDateRange(startDate, endDate)),
+    [load]
   );
 
   const fetchUserBookings = useCallback(async () => {
     if (!user) return [];
+    const userId = user.id;
+    return load(() => bookingService.getBookingsForUser(userId));
+  }, [user, load]);
 
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await bookingService.getBookingsForUser(user.id);
-      setBookings(data);
-      return data;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch bookings");
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+  // Re-runs the last query without showing the loading skeleton.
+  const refetch = useCallback(async () => {
+    const loader = lastLoaderRef.current;
+    return loader ? load(loader, true) : [];
+  }, [load]);
 
   const createBooking = useCallback(
     async (data: IBookingCreate) => {
@@ -78,9 +70,8 @@ export function useBookings() {
       setError(null);
       try {
         // Use API route for booking creation (server-side email sending)
-        const response = await fetch("/api/bookings", {
+        const response = await authedFetch("/api/bookings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         });
 
@@ -113,10 +104,9 @@ export function useBookings() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/bookings/${bookingId}`, {
+        const response = await authedFetch(`/api/bookings/${bookingId}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...updates, requesterId: user.id }),
+          body: JSON.stringify(updates),
         });
         const data = await response.json();
         if (!response.ok) {
@@ -147,13 +137,9 @@ export function useBookings() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/bookings/${bookingId}`, {
+        const response = await authedFetch(`/api/bookings/${bookingId}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            status: BookingStatus.CANCELLED,
-            requesterId: user.id,
-          }),
+          body: JSON.stringify({ status: BookingStatus.CANCELLED }),
         });
         const data = await response.json();
         if (!response.ok) {
@@ -178,81 +164,47 @@ export function useBookings() {
     [user]
   );
 
-  const fetchPendingBookings = useCallback(async (classroomId?: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await bookingService.getPendingBookings(classroomId);
-      setBookings(data);
-      return data;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch pending bookings");
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchPendingBookings = useCallback(
+    (classroomId?: string) => load(() => bookingService.getPendingBookings(classroomId)),
+    [load]
+  );
 
-  const approveBooking = useCallback(
-    async (bookingId: string) => {
+  const review = useCallback(
+    async (target: { bookingId?: string; seriesId?: string }, decision: "approve" | "reject") => {
       if (!user) {
         return { success: false, error: "Not authenticated" };
       }
 
-      setLoading(true);
       setError(null);
       try {
-        const result = await bookingService.approveBooking(bookingId, user.id);
-        if (result.error) {
+        const response = await authedFetch("/api/bookings/review", {
+          method: "POST",
+          body: JSON.stringify({ ...target, decision }),
+        });
+        const result = await readApiResult<{ reviewed: string[] }>(response, `Failed to ${decision} booking`);
+        if (!result.ok) {
           setError(result.error);
-          return { success: false, error: result.error };
+          const conflicts = (result.data as { conflicts?: string[] } | undefined)?.conflicts;
+          return { success: false, error: result.error, conflicts };
         }
-        setBookings((prev) =>
-          prev.map((b) =>
-            b.id === bookingId ? { ...b, status: BookingStatus.CONFIRMED } : b
-          )
-        );
+        const reviewed = new Set(result.data.reviewed);
+        const status = decision === "approve" ? BookingStatus.CONFIRMED : BookingStatus.CANCELLED;
+        setBookings((prev) => prev.map((b) => (reviewed.has(b.id) ? { ...b, status } : b)));
         return { success: true };
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "Failed to approve booking";
+        const errorMsg = err instanceof Error ? err.message : `Failed to ${decision} booking`;
         setError(errorMsg);
         return { success: false, error: errorMsg };
-      } finally {
-        setLoading(false);
       }
     },
     [user]
   );
 
-  const rejectBooking = useCallback(
-    async (bookingId: string) => {
-      if (!user) {
-        return { success: false, error: "Not authenticated" };
-      }
-
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await bookingService.rejectBooking(bookingId, user.id);
-        if (result.error) {
-          setError(result.error);
-          return { success: false, error: result.error };
-        }
-        setBookings((prev) =>
-          prev.map((b) =>
-            b.id === bookingId ? { ...b, status: BookingStatus.CANCELLED } : b
-          )
-        );
-        return { success: true };
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "Failed to reject booking";
-        setError(errorMsg);
-        return { success: false, error: errorMsg };
-      } finally {
-        setLoading(false);
-      }
-    },
-    [user]
+  const approveBooking = useCallback((bookingId: string) => review({ bookingId }, "approve"), [review]);
+  const rejectBooking = useCallback((bookingId: string) => review({ bookingId }, "reject"), [review]);
+  const reviewSeries = useCallback(
+    (seriesId: string, decision: "approve" | "reject") => review({ seriesId }, decision),
+    [review]
   );
 
   return {
@@ -263,11 +215,13 @@ export function useBookings() {
     fetchAllBookings,
     fetchUserBookings,
     fetchPendingBookings,
+    refetch,
     createBooking,
     modifyBooking,
     cancelBooking,
     approveBooking,
     rejectBooking,
+    reviewSeries,
     clearError: () => setError(null),
   };
 }

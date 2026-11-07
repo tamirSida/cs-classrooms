@@ -13,6 +13,7 @@ import { IUser, UserRole } from "@/lib/models";
 import { Plus, Pencil, UserX, UserCheck, Mail } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BulkInviteModal } from "@/components/users/BulkInviteModal";
+import { authedFetch } from "@/lib/utils";
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
@@ -53,9 +54,8 @@ export default function UsersPage() {
           role: data.role,
         });
       } else {
-        const response = await fetch("/api/users", {
+        const response = await authedFetch("/api/users", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         });
 

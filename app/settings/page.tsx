@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { settingsService } from "@/lib/services";
-import { ISettings } from "@/lib/models";
+import { ISettings, UserRole } from "@/lib/models";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Save, Copy, RefreshCw, QrCode, Download } from "lucide-react";
 import QRCode from "qrcode";
@@ -51,6 +51,7 @@ export default function SettingsPage() {
   const [restrictSignupDomain, setRestrictSignupDomain] = useState(true);
   const [allowedDomainsInput, setAllowedDomainsInput] = useState("runi.ac.il");
   const [adminCanOverrideBookings, setAdminCanOverrideBookings] = useState(false);
+  const [allowRecurringForAllUsers, setAllowRecurringForAllUsers] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -75,6 +76,7 @@ export default function SettingsPage() {
       setRestrictSignupDomain(data.restrictSignupDomain ?? true);
       setAllowedDomainsInput((data.allowedSignupDomains ?? ["runi.ac.il"]).join(", "));
       setAdminCanOverrideBookings(data.adminCanOverrideBookings ?? false);
+      setAllowRecurringForAllUsers(data.allowRecurringForAllUsers ?? false);
       setLoading(false);
     };
 
@@ -137,6 +139,7 @@ export default function SettingsPage() {
             .map((d) => d.trim().toLowerCase())
             .filter(Boolean),
           adminCanOverrideBookings,
+          allowRecurringForAllUsers,
         },
         user.id
       );
@@ -148,6 +151,21 @@ export default function SettingsPage() {
       setSaving(false);
     }
   };
+
+  if (user && user.role !== UserRole.SUPER_ADMIN) {
+    return (
+      <DashboardLayout title="Settings">
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <h3 className="text-lg font-semibold">Access Denied</h3>
+            <p className="text-muted-foreground mt-2">
+              Only super admins can change settings.
+            </p>
+          </CardContent>
+        </Card>
+      </DashboardLayout>
+    );
+  }
 
   if (loading) {
     return (
@@ -436,6 +454,19 @@ export default function SettingsPage() {
                 id="adminCanOverrideBookings"
                 checked={adminCanOverrideBookings}
                 onCheckedChange={setAdminCanOverrideBookings}
+              />
+            </div>
+            <div className="flex items-center justify-between border-t pt-4 mt-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="allowRecurringForAllUsers">Allow all users to create recurring bookings</Label>
+                <p className="text-xs text-muted-foreground">
+                  When off, only admins and super-admins can create repeating bookings. Existing series are not affected.
+                </p>
+              </div>
+              <Switch
+                id="allowRecurringForAllUsers"
+                checked={allowRecurringForAllUsers}
+                onCheckedChange={setAllowRecurringForAllUsers}
               />
             </div>
           </CardContent>

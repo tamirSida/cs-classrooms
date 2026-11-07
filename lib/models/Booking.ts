@@ -21,6 +21,8 @@ export interface IBooking {
   updatedAt: Timestamp;
   cancelledAt?: Timestamp;
   cancelledBy?: string;
+  seriesId?: string;
+  occurrenceIndex?: number;
 }
 
 export interface IBookingCreate {
@@ -64,7 +66,9 @@ export class Booking implements IBooking {
     public createdAt: Timestamp,
     public updatedAt: Timestamp,
     public cancelledAt?: Timestamp,
-    public cancelledBy?: string
+    public cancelledBy?: string,
+    public seriesId?: string,
+    public occurrenceIndex?: number
   ) {}
 
   static fromFirestore(id: string, data: Omit<IBooking, "id">): Booking {
@@ -81,7 +85,9 @@ export class Booking implements IBooking {
       data.createdAt,
       data.updatedAt,
       data.cancelledAt,
-      data.cancelledBy
+      data.cancelledBy,
+      data.seriesId,
+      data.occurrenceIndex
     );
   }
 
@@ -104,6 +110,10 @@ export class Booking implements IBooking {
     }
     if (this.cancelledBy) {
       data.cancelledBy = this.cancelledBy;
+    }
+    if (this.seriesId) {
+      data.seriesId = this.seriesId;
+      data.occurrenceIndex = this.occurrenceIndex;
     }
 
     return data;

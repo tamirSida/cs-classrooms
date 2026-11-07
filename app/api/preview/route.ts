@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { Collections } from "@/lib/firebase";
 import { BookingStatus, Settings } from "@/lib/models";
+import { daysBetween, isValidDateString } from "@/lib/time";
+
+export const dynamic = "force-dynamic";
+
+const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
+const MAX_RANGE_DAYS = 14;
 
 // GET /api/preview - Public endpoint for preview display.
 // Uses the admin SDK (unauthenticated callers can't pass Firestore rules),
@@ -15,6 +21,18 @@ export async function GET(request: NextRequest) {
     if (!startDate || !endDate) {
       return NextResponse.json(
         { error: "startDate and endDate are required" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !isValidDateString(startDate) ||
+      !isValidDateString(endDate) ||
+      endDate < startDate ||
+      daysBetween(startDate, endDate) > MAX_RANGE_DAYS
+    ) {
+      return NextResponse.json(
+        { error: `Invalid date range (max ${MAX_RANGE_DAYS} days)` },
         { status: 400 }
       );
     }
@@ -51,12 +69,12 @@ export async function GET(request: NextRequest) {
         return { id: doc.id, classroomId, userName, date, startTime, endTime, status };
       });
 
-    return NextResponse.json({ classrooms, settings, bookings });
+    return NextResponse.json({ classrooms, settings, bookings }, { headers: NO_STORE });
   } catch (error) {
     console.error("Preview API error:", error);
     return NextResponse.json(
       { error: "Failed to fetch preview data" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE }
     );
   }
 }

@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { Collections } from "@/lib/firebase";
+import { ADMIN_ROLES, authorize } from "@/lib/server/auth";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = await authorize(request, ADMIN_ROLES);
+  if (caller instanceof Response) return caller;
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -59,6 +63,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const caller = await authorize(request, ADMIN_ROLES);
+  if (caller instanceof Response) return caller;
+
   try {
     const { id } = await params;
     const db = adminDb();

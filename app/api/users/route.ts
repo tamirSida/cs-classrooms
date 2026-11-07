@@ -3,17 +3,26 @@ import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { Collections } from "@/lib/firebase";
 import { UserRole } from "@/lib/models";
+import { authorize } from "@/lib/server/auth";
 
 export async function POST(request: NextRequest) {
+  const caller = await authorize(request, [UserRole.SUPER_ADMIN]);
+  if (caller instanceof Response) return caller;
+
   try {
     const body = await request.json();
-    const { email, password, displayName, role, createdBy } = body;
+    const { email, password, displayName, role } = body;
+    const createdBy = caller.id;
 
-    if (!email || !password || !displayName || !role || !createdBy) {
+    if (!email || !password || !displayName || !role) {
       return NextResponse.json(
         { message: "Missing required fields" },
         { status: 400 }
       );
+    }
+
+    if (!Object.values(UserRole).includes(role)) {
+      return NextResponse.json({ message: "Invalid role" }, { status: 400 });
     }
 
     const auth = adminAuth();
@@ -61,7 +70,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const caller = await authorize(request, [UserRole.SUPER_ADMIN]);
+  if (caller instanceof Response) return caller;
+
   try {
     const db = adminDb();
     const snapshot = await db.collection(Collections.USERS).get();

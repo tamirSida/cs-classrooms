@@ -4,17 +4,17 @@ import { useState, useEffect, useCallback } from "react";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { CalendarHeader } from "./CalendarHeader";
 import { TimeGrid } from "./TimeGrid";
-import { BookingModal } from "./BookingModal";
+import { BookingModal, BookingSaveData, BookingSaveResult } from "./BookingModal";
 import { FindClassroomModal } from "./FindClassroomModal";
 import { IBooking, IClassroom, ISettings, UserRole } from "@/lib/models";
 import { useAuth } from "@/contexts/AuthContext";
-import { useBookings, useClassrooms } from "@/hooks";
+import { useBookings, useClassrooms, createSeries, previewFromConflict } from "@/hooks";
 import { settingsService } from "@/lib/services";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function CalendarView() {
   const { user } = useAuth();
-  const { bookings, loading: bookingsLoading, fetchBookingsForClassroom, fetchAllBookings, createBooking, modifyBooking, cancelBooking } = useBookings();
+  const { bookings, fetchBookingsForClassroom, fetchAllBookings, createBooking, modifyBooking, cancelBooking, refetch } = useBookings();
   const { classrooms, loading: classroomsLoading, fetchBookableClassrooms } = useClassrooms();
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -23,6 +23,8 @@ export function CalendarView() {
   const [settings, setSettings] = useState<ISettings | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
+  // New key per opening, so the booking form never shows state from a previous one.
+  const [modalSession, setModalSession] = useState(0);
   const [findModalOpen, setFindModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<IBooking | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -42,14 +44,21 @@ export function CalendarView() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Load settings
+  const loadSettings = useCallback(async () => {
+    if (!user) return;
+    try {
+      setSettings(await settingsService.getSettings(user.id));
+    } catch (error) {
+      console.error("Failed to refresh settings:", error);
+    }
+  }, [user]);
+
   useEffect(() => {
-    const loadSettings = async () => {
-      if (!user) return;
-      const s = await settingsService.getSettings(user.id);
-      setSettings(s);
-    };
-    loadSettings();
+    if (!user) return;
+    settingsService
+      .getSettings(user.id)
+      .then(setSettings)
+      .catch((error) => console.error("Failed to load settings:", error));
   }, [user]);
 
   // Load classrooms
@@ -96,9 +105,12 @@ export function CalendarView() {
       setSelectedDate(date);
       setSelectedStartTime(startTime);
       setSelectedEndTime(endTime);
+      setModalSession((n) => n + 1);
       setModalOpen(true);
+      // Pick up permission changes (e.g. the recurring switch) without a reload.
+      loadSettings();
     },
-    [selectedClassroomId]
+    [selectedClassroomId, loadSettings]
   );
 
   const handleBookingClick = useCallback((booking: IBooking) => {
@@ -106,20 +118,34 @@ export function CalendarView() {
     setSelectedDate(null);
     setSelectedStartTime("");
     setSelectedEndTime("");
+    setModalSession((n) => n + 1);
     setModalOpen(true);
   }, []);
 
-  const handleSaveBooking = async (data: {
-    date: string;
-    startTime: string;
-    endTime: string;
-  }) => {
+  const handleSaveBooking = async (data: BookingSaveData): Promise<BookingSaveResult> => {
+    const { recurrence, ...slot } = data;
     if (selectedBooking) {
-      return modifyBooking(selectedBooking.id, data);
+      return modifyBooking(selectedBooking.id, slot);
     }
 
     if (!selectedClassroomId || selectedClassroomId === "all" || !user) {
       return { success: false, error: "Please select a classroom to create a booking" };
+    }
+
+    if (recurrence) {
+      const result = await createSeries({
+        classroomId: selectedClassroomId,
+        startDate: slot.date,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        rule: recurrence.rule,
+        skipDates: recurrence.skipDates,
+      });
+      if (result.ok) {
+        await refetch();
+        return { success: true };
+      }
+      return { success: false, error: result.error, preview: previewFromConflict(result) ?? undefined };
     }
 
     return createBooking({
@@ -127,7 +153,7 @@ export function CalendarView() {
       userId: user.id,
       userEmail: user.email,
       userName: user.displayName,
-      ...data,
+      ...slot,
     });
   };
 
@@ -145,6 +171,7 @@ export function CalendarView() {
     setSelectedStartTime(startTime);
     setSelectedEndTime(endTime);
     setCurrentDate(date);
+    setModalSession((n) => n + 1);
     setModalOpen(true);
   };
 
@@ -199,6 +226,7 @@ export function CalendarView() {
       </div>
 
       <BookingModal
+        key={modalSession}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         booking={selectedBooking}
@@ -209,11 +237,15 @@ export function CalendarView() {
         operatingHours={settings.operatingHours}
         onSave={handleSaveBooking}
         onCancel={handleCancelBooking}
+        onSeriesChanged={() => refetch()}
         canOverride={
           !!user && (
             user.role === UserRole.SUPER_ADMIN ||
             (user.role === UserRole.ADMIN && !!settings.adminCanOverrideBookings)
           )
+        }
+        canRecur={
+          !!user && (user.role !== UserRole.STUDENT || !!settings.allowRecurringForAllUsers)
         }
       />
 

@@ -1,200 +1,103 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase/admin";
 import { Timestamp } from "firebase-admin/firestore";
-import { Collections } from "@/lib/firebase";
-import { BookingStatus, IBooking, UserRole } from "@/lib/models";
-import { Resend } from "resend";
+import { adminDb } from "@/lib/firebase/admin";
+import { Collections } from "@/lib/firebase/collections";
+import { BookingStatus } from "@/lib/models";
+import { conflictingDates, validateSlotBasics } from "@/lib/bookings";
+import { isValidDateString } from "@/lib/time";
+import { requireUser } from "@/lib/server/auth";
+import { HttpError, readJson, withErrors } from "@/lib/server/http";
+import { getServerSettings } from "@/lib/server/settings";
 import {
-  bookingConfirmedTemplate,
-  bookingPendingTemplate,
-  bookingConfirmedText,
-  bookingPendingText,
-  BookingEmailData,
-} from "@/lib/email";
+  assertCanBookClassroom,
+  initialStatus,
+  loadActiveBookings,
+  loadClassroom,
+} from "@/lib/server/bookingRules";
+import { sendBookingEmail } from "@/lib/server/bookingEmails";
 
-// Server-side email sending (has access to RESEND_API_KEY)
-async function sendBookingEmail(booking: IBooking, classroomName: string): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn("[API/bookings] RESEND_API_KEY not configured, skipping email");
-    return false;
+interface CreateBookingBody {
+  classroomId?: string;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+// POST /api/bookings - create a single booking for the signed-in user.
+export const POST = withErrors("API/bookings POST", async (request: NextRequest) => {
+  const user = await requireUser(request);
+  const { classroomId, date, startTime, endTime } = await readJson<CreateBookingBody>(request);
+
+  if (!classroomId || !date || !startTime || !endTime) {
+    throw new HttpError(400, "Missing required fields");
   }
+  if (!isValidDateString(date)) throw new HttpError(400, "Invalid date");
 
-  const resend = new Resend(apiKey);
-  const fromEmail = process.env.RESEND_FROM_EMAIL || "room@efi-arazi.com";
-  const fromName = process.env.RESEND_FROM_NAME || "ClassScheduler";
+  const db = adminDb();
+  const [classroom, settings] = await Promise.all([loadClassroom(db, classroomId), getServerSettings(db)]);
+  assertCanBookClassroom(user, classroom);
 
-  const isPending = booking.status === BookingStatus.PENDING;
-  const emailData: BookingEmailData = {
-    userName: booking.userName,
-    userEmail: booking.userEmail,
-    classroomName,
-    date: booking.date,
-    startTime: booking.startTime,
-    endTime: booking.endTime,
+  const slotError = validateSlotBasics(settings.operatingHours, startTime, endTime);
+  if (slotError) throw new HttpError(400, slotError);
+
+  const bookingData = {
+    classroomId,
+    userId: user.id,
+    userEmail: user.email,
+    userName: user.displayName,
+    date,
+    startTime,
+    endTime,
+    status: initialStatus(user, classroom),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
   };
 
-  const html = isPending
-    ? bookingPendingTemplate(emailData)
-    : bookingConfirmedTemplate(emailData);
-
-  const text = isPending
-    ? bookingPendingText(emailData)
-    : bookingConfirmedText(emailData);
-
-  const subject = isPending
-    ? `Booking Submitted - ${classroomName}`
-    : `Booking Confirmed - ${classroomName}`;
-
-  try {
-    console.log(`[API/bookings] Sending email to: ${booking.userEmail}, status: ${booking.status}`);
-    const { data, error } = await resend.emails.send({
-      from: `${fromName} <${fromEmail}>`,
-      to: booking.userEmail,
-      subject,
-      html,
-      text,
-    });
-
-    if (error) {
-      console.error("[API/bookings] Resend error:", error);
-      return false;
+  const docRef = db.collection(Collections.BOOKINGS).doc();
+  await db.runTransaction(async (tx) => {
+    const active = await loadActiveBookings(db, date, date, tx);
+    if (conflictingDates(active, classroomId, [{ date, startTime, endTime }]).size > 0) {
+      throw new HttpError(409, "Time slot is already booked");
     }
+    tx.create(docRef, bookingData);
+  });
 
-    console.log(`[API/bookings] Email sent! ID: ${data?.id}`);
-    return true;
-  } catch (error) {
-    console.error("[API/bookings] Failed to send email:", error);
-    return false;
+  const booking = { id: docRef.id, ...bookingData };
+  await sendBookingEmail(booking, classroom.name, {
+    kind: booking.status === BookingStatus.PENDING ? "pending" : "confirmed",
+  });
+
+  return NextResponse.json(booking);
+});
+
+// GET /api/bookings - signed-in users only. Filters in memory to avoid composite indexes.
+export const GET = withErrors("API/bookings GET", async (request: NextRequest) => {
+  await requireUser(request);
+
+  const { searchParams } = request.nextUrl;
+  const classroomId = searchParams.get("classroomId");
+  const startDate = searchParams.get("startDate");
+  const endDate = searchParams.get("endDate");
+  const userId = searchParams.get("userId");
+
+  let query = adminDb().collection(Collections.BOOKINGS) as FirebaseFirestore.Query;
+  if (classroomId) {
+    query = query.where("classroomId", "==", classroomId);
+  } else if (userId) {
+    query = query.where("userId", "==", userId);
   }
-}
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const {
-      classroomId,
-      userId,
-      userEmail,
-      userName,
-      date,
-      startTime,
-      endTime,
-    } = body;
+  const snapshot = await query.get();
+  let bookings = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Array<{
+    id: string;
+    userId: string;
+    date: string;
+    startTime: string;
+  }>;
 
-    if (!classroomId || !userId || !userEmail || !userName || !date || !startTime || !endTime) {
-      return NextResponse.json(
-        { message: "Missing required fields" },
-        { status: 400 }
-      );
-    }
+  if (classroomId && userId) bookings = bookings.filter((b) => b.userId === userId);
+  if (startDate && endDate) bookings = bookings.filter((b) => b.date >= startDate && b.date <= endDate);
 
-    const db = adminDb();
-
-    // Get classroom data
-    const classroomDoc = await db.collection(Collections.CLASSROOMS).doc(classroomId).get();
-    if (!classroomDoc.exists) {
-      return NextResponse.json(
-        { message: "Classroom not found" },
-        { status: 404 }
-      );
-    }
-    const classroomData = classroomDoc.data();
-    const classroomName = classroomData?.name || "Classroom";
-    const requiresApproval = classroomData?.config?.requiresApproval ?? false;
-
-    // Get user role to determine if admin (auto-approve)
-    const userDoc = await db.collection(Collections.USERS).doc(userId).get();
-    const userRole = userDoc.exists ? userDoc.data()?.role : UserRole.STUDENT;
-    const isAdmin = userRole === UserRole.ADMIN || userRole === UserRole.SUPER_ADMIN;
-
-    // Determine status: admins auto-confirm, otherwise check classroom setting
-    const status = isAdmin || !requiresApproval
-      ? BookingStatus.CONFIRMED
-      : BookingStatus.PENDING;
-
-    const bookingData = {
-      classroomId,
-      userId,
-      userEmail,
-      userName,
-      date,
-      startTime,
-      endTime,
-      status,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
-
-    const docRef = await db.collection(Collections.BOOKINGS).add(bookingData);
-
-    // Cast to IBooking - admin SDK Timestamp is compatible at runtime
-    const booking = {
-      id: docRef.id,
-      ...bookingData,
-    } as IBooking;
-
-    // Send confirmation email (server-side)
-    await sendBookingEmail(booking, classroomName);
-
-    return NextResponse.json(booking);
-  } catch (error) {
-    console.error("Error creating booking:", error);
-    return NextResponse.json(
-      { message: "Failed to create booking" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const classroomId = searchParams.get("classroomId");
-    const startDate = searchParams.get("startDate");
-    const endDate = searchParams.get("endDate");
-    const userId = searchParams.get("userId");
-
-    const db = adminDb();
-
-    // Use single filter to avoid composite index requirements
-    // Filter the rest in memory
-    let query = db.collection(Collections.BOOKINGS) as FirebaseFirestore.Query;
-
-    if (classroomId) {
-      query = query.where("classroomId", "==", classroomId);
-    } else if (userId) {
-      query = query.where("userId", "==", userId);
-    }
-
-    const snapshot = await query.get();
-
-    let bookings = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Array<{ id: string; classroomId: string; userId: string; date: string; startTime: string }>;
-
-    // Filter in memory to avoid composite indexes
-    if (classroomId && userId) {
-      bookings = bookings.filter((b) => b.userId === userId);
-    }
-
-    if (startDate && endDate) {
-      bookings = bookings.filter((b) => b.date >= startDate && b.date <= endDate);
-    }
-
-    // Sort by date and startTime
-    bookings.sort((a, b) => {
-      if (a.date !== b.date) return a.date.localeCompare(b.date);
-      return a.startTime.localeCompare(b.startTime);
-    });
-
-    return NextResponse.json(bookings);
-  } catch (error) {
-    console.error("Error fetching bookings:", error);
-    return NextResponse.json(
-      { message: "Failed to fetch bookings" },
-      { status: 500 }
-    );
-  }
-}
+  bookings.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  return NextResponse.json(bookings);
+});
